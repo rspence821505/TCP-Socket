@@ -18,7 +18,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 TEST_SRCS = $(wildcard $(TESTS_DIR)/*.cpp)
 
 # Main targets
-BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server blocking_client feed_handler_spsc feed_handler_spmc
+BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server blocking_client feed_handler_spsc feed_handler_spmc socket_tuning_benchmark
 TEST_BINARIES = test_spsc_queue
 
 # Default target
@@ -50,6 +50,9 @@ feed_handler_spsc: $(SRC_DIR)/feed_handler_spsc.cpp $(INCLUDE_DIR)/binary_protoc
 feed_handler_spmc: $(SRC_DIR)/feed_handler_spmc.cpp $(INCLUDE_DIR)/binary_protocol.hpp
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_spmc.cpp -o $(BUILD_DIR)/feed_handler_spmc
 
+socket_tuning_benchmark: $(SRC_DIR)/socket_tuning_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/socket_config.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/socket_tuning_benchmark.cpp -o $(BUILD_DIR)/socket_tuning_benchmark
+
 # Test targets
 tests: $(BUILD_DIR) $(TEST_BINARIES)
 
@@ -71,10 +74,17 @@ benchmark: all
 comparison: all
 	./scripts/test_comparison.sh
 
-feed-handler: feed_handler_spsc binary_mock_server
+feed-handler: $(BUILD_DIR) feed_handler_spsc binary_mock_server
 	./scripts/test_feed_handler.sh
 
-false-sharing: feed_handler_spmc binary_mock_server
+false-sharing: $(BUILD_DIR) feed_handler_spmc binary_mock_server
 	./scripts/benchmark_false_sharing.sh
 
-.PHONY: all clean tests run-tests benchmark comparison feed-handler false-sharing
+measure-false-sharing: $(BUILD_DIR) feed_handler_spmc binary_mock_server
+	./scripts/measure_false_sharing.sh
+
+# Exercise 6: Socket tuning benchmark
+socket-benchmark: $(BUILD_DIR) socket_tuning_benchmark binary_mock_server
+	./scripts/run_socket_benchmark.sh
+
+.PHONY: all clean tests run-tests benchmark comparison feed-handler false-sharing measure-false-sharing socket-benchmark

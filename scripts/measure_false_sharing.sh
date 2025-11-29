@@ -2,6 +2,13 @@
 # Measure cache coherency traffic with and without padding
 # Demonstrates the impact of false sharing on performance
 
+# Script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+BUILD_DIR="$PROJECT_ROOT/build"
+SRC_DIR="$PROJECT_ROOT/src"
+INCLUDE_DIR="$PROJECT_ROOT/include"
+
 echo "==================================================================="
 echo "False Sharing Detection with perf"
 echo "==================================================================="
@@ -15,36 +22,44 @@ echo ""
 
 # Check if perf is available
 if ! command -v perf &> /dev/null; then
-    echo "❌ ERROR: 'perf' command not found!"
+    echo "ERROR: 'perf' command not found!"
     echo ""
     echo "On Linux, install with:"
     echo "  sudo apt-get install linux-tools-common linux-tools-generic"
     echo ""
     echo "On macOS, perf is not available. Use Instruments instead:"
-    echo "  instruments -t 'System Trace' ./feed_handler_spmc"
+    echo "  instruments -t 'System Trace' $BUILD_DIR/feed_handler_spmc"
     echo ""
     exit 1
 fi
 
 # Create build directory
-mkdir -p build
+mkdir -p "$BUILD_DIR"
 
 # Compile
-echo "📦 Compiling SPMC feed handler..."
-g++ -std=c++17 -O3 -pthread -Iinclude \
-    src/feed_handler_spmc.cpp -o build/feed_handler_spmc
+echo "Compiling SPMC feed handler..."
+g++ -std=c++17 -O3 -pthread -I"$INCLUDE_DIR" \
+    "$SRC_DIR/feed_handler_spmc.cpp" -o "$BUILD_DIR/feed_handler_spmc"
 
 if [ $? -ne 0 ]; then
-    echo "❌ Compilation failed!"
+    echo "Compilation failed!"
     exit 1
 fi
 
-echo "✅ Compilation successful"
+g++ -std=c++17 -O3 -I"$INCLUDE_DIR" \
+    "$SRC_DIR/binary_mock_server.cpp" -o "$BUILD_DIR/binary_mock_server"
+
+if [ $? -ne 0 ]; then
+    echo "Compilation failed!"
+    exit 1
+fi
+
+echo "Compilation successful"
 echo ""
 
 # Start mock server
-echo "🚀 Starting mock exchange server on port 9999..."
-./build/binary_mock_server 9999 > /tmp/server.log 2>&1 &
+echo "Starting mock exchange server on port 9999..."
+"$BUILD_DIR/binary_mock_server" 9999 > /tmp/server.log 2>&1 &
 SERVER_PID=$!
 sleep 2
 
@@ -58,7 +73,7 @@ echo ""
 
 # Run without padding
 perf stat -e cache-references,cache-misses,cycles,instructions \
-    ./build/feed_handler_spmc 9999 2048 unpadded 2>&1 | tee /tmp/unpadded_output.txt
+    "$BUILD_DIR/feed_handler_spmc" 9999 2048 unpadded 2>&1 | tee /tmp/unpadded_output.txt
 
 echo ""
 echo "Saving results to: /tmp/unpadded_perf.txt"
@@ -66,12 +81,12 @@ grep -A 10 "Performance counter" /tmp/unpadded_output.txt > /tmp/unpadded_perf.t
 
 # Restart server
 echo ""
-echo "🔄 Restarting mock server..."
+echo "Restarting mock server..."
 kill $SERVER_PID 2>/dev/null
 wait $SERVER_PID 2>/dev/null
 sleep 2
 
-./build/binary_mock_server 9999 > /tmp/server.log 2>&1 &
+"$BUILD_DIR/binary_mock_server" 9999 > /tmp/server.log 2>&1 &
 SERVER_PID=$!
 sleep 2
 
@@ -85,7 +100,7 @@ echo ""
 
 # Run with padding
 perf stat -e cache-references,cache-misses,cycles,instructions \
-    ./build/feed_handler_spmc 9999 2048 padded 2>&1 | tee /tmp/padded_output.txt
+    "$BUILD_DIR/feed_handler_spmc" 9999 2048 padded 2>&1 | tee /tmp/padded_output.txt
 
 echo ""
 echo "Saving results to: /tmp/padded_perf.txt"
@@ -102,7 +117,7 @@ echo "==================================================================="
 echo ""
 
 # Extract cache miss rate
-echo "📊 Cache Performance:"
+echo "Cache Performance:"
 echo ""
 
 echo "WITHOUT PADDING (False Sharing):"
@@ -125,14 +140,14 @@ echo "  2. cache-miss rate: % of cache references that miss"
 echo "  3. Total runtime: Padded version should be faster"
 echo ""
 echo "Expected Results:"
-echo "  • WITHOUT padding: Higher cache-miss rate (5-15%)"
-echo "  • WITH padding: Lower cache-miss rate (1-3%)"
-echo "  • Speedup: 10-30% improvement with padding"
+echo "  - WITHOUT padding: Higher cache-miss rate (5-15%)"
+echo "  - WITH padding: Lower cache-miss rate (1-3%)"
+echo "  - Speedup: 10-30% improvement with padding"
 echo ""
 echo "Why?"
 echo "  Without padding, when Consumer 0 updates its counter, it invalidates"
 echo "  Consumer 1's cache line (false sharing). With padding, each consumer"
-echo "  owns its own cache line → no invalidation → better performance."
+echo "  owns its own cache line -> no invalidation -> better performance."
 echo ""
 echo "Full output saved to:"
 echo "  /tmp/unpadded_output.txt"
