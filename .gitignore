@@ -42,3 +42,6 @@
 
 
 tcp_*
+
+# Build directory
+build/
