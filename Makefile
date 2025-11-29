@@ -18,7 +18,11 @@ SRCS = $(wildcard $(SRC_DIR)/*.cpp)
 TEST_SRCS = $(wildcard $(TESTS_DIR)/*.cpp)
 
 # Main targets
-BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server blocking_client feed_handler_spsc feed_handler_spmc socket_tuning_benchmark feed_handler_heartbeat heartbeat_mock_server
+BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server \
+           blocking_client feed_handler_spsc feed_handler_spmc \
+           socket_tuning_benchmark feed_handler_heartbeat heartbeat_mock_server \
+           feed_handler_snapshot snapshot_mock_server
+
 TEST_BINARIES = test_spsc_queue
 
 # Default target
@@ -53,12 +57,19 @@ feed_handler_spmc: $(SRC_DIR)/feed_handler_spmc.cpp $(INCLUDE_DIR)/binary_protoc
 socket_tuning_benchmark: $(SRC_DIR)/socket_tuning_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/socket_config.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/socket_tuning_benchmark.cpp -o $(BUILD_DIR)/socket_tuning_benchmark
 
-# Heartbeat binaries
-feed_handler_heartbeat: $(SRC_DIR)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/binary_protocol_v2.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
+# Exercise 7: Heartbeat binaries
+feed_handler_heartbeat: $(SRC_DIR)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_heartbeat.cpp -o $(BUILD_DIR)/feed_handler_heartbeat
 
-heartbeat_mock_server: $(SRC_DIR)/heartbeat_mock_server.cpp $(INCLUDE_DIR)/binary_protocol_v2.hpp
+heartbeat_mock_server: $(SRC_DIR)/heartbeat_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
 	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/heartbeat_mock_server.cpp -o $(BUILD_DIR)/heartbeat_mock_server
+
+# Exercise 7 Extension: Snapshot Recovery
+feed_handler_snapshot: $(SRC_DIR)/feed_handler_snapshot.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/order_book.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_snapshot.cpp -o $(BUILD_DIR)/feed_handler_snapshot
+
+snapshot_mock_server: $(SRC_DIR)/snapshot_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/snapshot_mock_server.cpp -o $(BUILD_DIR)/snapshot_mock_server
 
 # Test targets
 tests: $(BUILD_DIR) $(TEST_BINARIES)
@@ -98,4 +109,14 @@ socket-benchmark: $(BUILD_DIR) socket_tuning_benchmark binary_mock_server
 heartbeat-benchmark: $(BUILD_DIR) feed_handler_heartbeat heartbeat_mock_server
 	./scripts/run_heartbeat_test.sh
 
-.PHONY: all clean tests run-tests benchmark comparison feed-handler false-sharing measure-false-sharing socket-benchmark heartbeat-benchmark
+# Snapshot recovery targets
+snapshot-recovery: $(BUILD_DIR) feed_handler_snapshot snapshot_mock_server
+	@echo "✅ Snapshot recovery extension built!"
+
+test-snapshot: snapshot-recovery
+	@echo "Running snapshot recovery tests..."
+	./scripts/test_snapshot_recovery.sh
+
+.PHONY: all clean tests run-tests benchmark comparison feed-handler false-sharing \
+        measure-false-sharing socket-benchmark heartbeat-benchmark \
+        snapshot-recovery test-snapshot

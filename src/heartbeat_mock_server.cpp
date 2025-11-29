@@ -11,7 +11,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "binary_protocol_v2.hpp"
+#include "binary_protocol.hpp"
 
 // Global flag for graceful shutdown
 volatile sig_atomic_t keep_running = 1;
