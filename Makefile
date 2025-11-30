@@ -21,7 +21,8 @@ TEST_SRCS = $(wildcard $(TESTS_DIR)/*.cpp)
 BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server \
            blocking_client feed_handler_spsc feed_handler_spmc \
            socket_tuning_benchmark feed_handler_heartbeat heartbeat_mock_server \
-           feed_handler_snapshot snapshot_mock_server
+           feed_handler_snapshot snapshot_mock_server \
+           udp_mock_server udp_feed_handler tcp_vs_udp_benchmark
 
 TEST_BINARIES = test_spsc_queue
 
@@ -71,6 +72,16 @@ feed_handler_snapshot: $(SRC_DIR)/feed_handler_snapshot.cpp $(INCLUDE_DIR)/binar
 snapshot_mock_server: $(SRC_DIR)/snapshot_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
 	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/snapshot_mock_server.cpp -o $(BUILD_DIR)/snapshot_mock_server
 
+# Exercise 8: UDP Benchmark
+udp_mock_server: $(SRC_DIR)/udp_mock_server.cpp $(INCLUDE_DIR)/udp_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/udp_mock_server.cpp -o $(BUILD_DIR)/udp_mock_server
+
+udp_feed_handler: $(SRC_DIR)/udp_feed_handler.cpp $(INCLUDE_DIR)/udp_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/udp_feed_handler.cpp -o $(BUILD_DIR)/udp_feed_handler
+
+tcp_vs_udp_benchmark: $(SRC_DIR)/tcp_vs_udp_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/udp_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/tcp_vs_udp_benchmark.cpp -o $(BUILD_DIR)/tcp_vs_udp_benchmark
+
 # Test targets
 tests: $(BUILD_DIR) $(TEST_BINARIES)
 
@@ -117,6 +128,14 @@ test-snapshot: snapshot-recovery
 	@echo "Running snapshot recovery tests..."
 	./scripts/test_snapshot_recovery.sh
 
+# UDP benchmark targets
+udp-benchmark: $(BUILD_DIR) udp_mock_server udp_feed_handler
+	@echo "✅ UDP benchmark binaries built!"
+
+tcp-vs-udp: $(BUILD_DIR) tcp_vs_udp_benchmark udp_mock_server udp_feed_handler binary_mock_server
+	@echo "✅ TCP vs UDP comparison benchmark built!"
+	@echo "Run: ./scripts/run_tcp_vs_udp_benchmark.sh"
+
 .PHONY: all clean tests run-tests benchmark comparison feed-handler false-sharing \
         measure-false-sharing socket-benchmark heartbeat-benchmark \
-        snapshot-recovery test-snapshot
+        snapshot-recovery test-snapshot udp-benchmark tcp-vs-udp
