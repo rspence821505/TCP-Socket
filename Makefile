@@ -1,7 +1,7 @@
 # TCP-Socket Project Makefile
 # Builds all binaries from src/ using headers from include/
 
-CXX = g++
+CXX = clang++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 
 # Directories
@@ -12,6 +12,10 @@ TESTS_DIR = tests
 
 # Include path
 INCLUDES = -I$(INCLUDE_DIR)
+
+# Profiling flags
+PROFILE_FLAGS = -O2 -g -fno-omit-frame-pointer
+OPTIMIZE_FLAGS = -O3 -g -fno-omit-frame-pointer -march=native -mtune=native
 
 # Source files
 SRCS = $(wildcard $(SRC_DIR)/*.cpp)
@@ -32,6 +36,9 @@ all: $(BUILD_DIR) $(BINARIES)
 # Create build directory
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
+
+# Alias for build directory
+directories: $(BUILD_DIR)
 
 # Binary targets
 binary_client: $(SRC_DIR)/binary_client.cpp $(INCLUDE_DIR)/binary_protocol.hpp
@@ -58,21 +65,21 @@ feed_handler_spmc: $(SRC_DIR)/feed_handler_spmc.cpp $(INCLUDE_DIR)/binary_protoc
 socket_tuning_benchmark: $(SRC_DIR)/socket_tuning_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/socket_config.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/socket_tuning_benchmark.cpp -o $(BUILD_DIR)/socket_tuning_benchmark
 
-# Exercise 7: Heartbeat binaries
+# Heartbeat binaries
 feed_handler_heartbeat: $(SRC_DIR)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_heartbeat.cpp -o $(BUILD_DIR)/feed_handler_heartbeat
 
 heartbeat_mock_server: $(SRC_DIR)/heartbeat_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
 	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/heartbeat_mock_server.cpp -o $(BUILD_DIR)/heartbeat_mock_server
 
-# Exercise 7 Extension: Snapshot Recovery
+# Extension: Snapshot Recovery
 feed_handler_snapshot: $(SRC_DIR)/feed_handler_snapshot.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/order_book.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_snapshot.cpp -o $(BUILD_DIR)/feed_handler_snapshot
 
 snapshot_mock_server: $(SRC_DIR)/snapshot_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
 	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/snapshot_mock_server.cpp -o $(BUILD_DIR)/snapshot_mock_server
 
-# Exercise 8: UDP Benchmark
+# UDP Benchmark
 udp_mock_server: $(SRC_DIR)/udp_mock_server.cpp $(INCLUDE_DIR)/udp_protocol.hpp
 	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/udp_mock_server.cpp -o $(BUILD_DIR)/udp_mock_server
 
@@ -82,7 +89,134 @@ udp_feed_handler: $(SRC_DIR)/udp_feed_handler.cpp $(INCLUDE_DIR)/udp_protocol.hp
 tcp_vs_udp_benchmark: $(SRC_DIR)/tcp_vs_udp_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/udp_protocol.hpp
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/tcp_vs_udp_benchmark.cpp -o $(BUILD_DIR)/tcp_vs_udp_benchmark
 
+#=============================================================================
+# Profiling Infrastructure
+#=============================================================================
+
+# Baseline with profiling symbols (for perf/sample)
+feed_handler_heartbeat_profile: $(SRC_DIR)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/*.hpp
+	@echo "Building baseline with profiling symbols..."
+	$(CXX) $(CXXFLAGS) $(PROFILE_FLAGS) -pthread $(INCLUDES) \
+		$(SRC_DIR)/feed_handler_heartbeat.cpp \
+		-o $(BUILD_DIR)/feed_handler_heartbeat_profile
+
+# Optimized version with all improvements
+feed_handler_heartbeat_optimized: $(SRC_DIR)/feed_handler_heartbeat_optimized.cpp $(INCLUDE_DIR)/sequence_tracker_optimized.hpp $(INCLUDE_DIR)/*.hpp
+	@echo "Building optimized version improvements..."
+	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
+		$(SRC_DIR)/feed_handler_heartbeat_optimized.cpp \
+		-o $(BUILD_DIR)/feed_handler_heartbeat_optimized
+
+# Build both versions for comparison
+profiling: $(BUILD_DIR) heartbeat_mock_server feed_handler_heartbeat_profile feed_handler_heartbeat_optimized
+	@echo ""
+	@echo "Profiling builds complete!"
+	@echo "   Baseline:  $(BUILD_DIR)/feed_handler_heartbeat_profile"
+	@echo "   Optimized: $(BUILD_DIR)/feed_handler_heartbeat_optimized"
+	@echo ""
+	@echo "Next steps:"
+	@echo "   1. Run profiling:  ./scripts/profile_feed_handler.sh"
+	@echo "   2. Compare results: ./scripts/compare_profiling_results.sh"
+	@echo "   3. Quick benchmark: ./scripts/benchmark_throughput.sh"
+	@echo ""
+
+# Run profiling analysis
+profile: profiling
+	@./scripts/profile_feed_handler.sh
+
+# Compare profiling results
+compare-profiling:
+	@./scripts/compare_profiling_results.sh
+
+# Quick throughput test
+throughput-benchmark: profiling
+	@./scripts/benchmark_throughput.sh
+
+# Interactive perf report (Linux)
+perf-baseline:
+	@if [ -f profiling_results/perf_baseline.data ]; then \
+		perf report -i profiling_results/perf_baseline.data; \
+	else \
+		echo "No baseline profiling data found. Run: make profile"; \
+	fi
+
+perf-optimized:
+	@if [ -f profiling_results/perf_optimized.data ]; then \
+		perf report -i profiling_results/perf_optimized.data; \
+	else \
+		echo "No optimized profiling data found. Run: make profile"; \
+	fi
+
+# Open flamegraphs
+flamegraph-baseline:
+	@if [ -f profiling_results/baseline_flame.svg ]; then \
+		open profiling_results/baseline_flame.svg 2>/dev/null || xdg-open profiling_results/baseline_flame.svg 2>/dev/null || echo "Open: profiling_results/baseline_flame.svg"; \
+	else \
+		echo "No baseline flamegraph found. Run: make profile"; \
+	fi
+
+flamegraph-optimized:
+	@if [ -f profiling_results/optimized_flame.svg ]; then \
+		open profiling_results/optimized_flame.svg 2>/dev/null || xdg-open profiling_results/optimized_flame.svg 2>/dev/null || echo "Open: profiling_results/optimized_flame.svg"; \
+	else \
+		echo "No optimized flamegraph found. Run: make profile"; \
+	fi
+
+#=============================================================================
+#  Memory Pool & False Sharing
+#=============================================================================
+
+# Memory pool benchmark (pool vs malloc)
+benchmark_pool_vs_malloc: $(SRC_DIR)/benchmark_pool_vs_malloc.cpp $(INCLUDE_DIR)/thread_local_pool.hpp
+	@echo "Building memory pool benchmark..."
+	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
+		$(SRC_DIR)/benchmark_pool_vs_malloc.cpp \
+		-o $(BUILD_DIR)/benchmark_pool_vs_malloc
+
+# False sharing demonstration
+false_sharing_demo: $(SRC_DIR)/false_sharing_demo.cpp
+	@echo "Building false sharing demonstration..."
+	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
+		$(SRC_DIR)/false_sharing_demo.cpp \
+		-o $(BUILD_DIR)/false_sharing_demo
+
+# Build all extension components
+extension: $(BUILD_DIR) benchmark_pool_vs_malloc false_sharing_demo
+	@echo ""
+	@echo "Extension builds complete!"
+	@echo ""
+	@echo "Run benchmarks:"
+	@echo "  ./$(BUILD_DIR)/benchmark_pool_vs_malloc 4 100000"
+	@echo "  ./$(BUILD_DIR)/false_sharing_demo 10000000"
+	@echo ""
+	@echo "Profile with sample (macOS):"
+	@echo "  sample ./$(BUILD_DIR)/benchmark_pool_vs_malloc 30 -file pool_profile.txt"
+	@echo ""
+
+# Run pool benchmark
+benchmark-pool: benchmark_pool_vs_malloc
+	@echo "Running memory pool benchmark..."
+	@./$(BUILD_DIR)/benchmark_pool_vs_malloc 4 100000
+
+# Run false sharing demo
+false-sharing-demo: false_sharing_demo
+	@echo "Running false sharing demonstration..."
+	@./$(BUILD_DIR)/false_sharing_demo 10000000
+
+# Profile pool with sample (macOS)
+profile-pool-sample: benchmark_pool_vs_malloc
+	@echo "Profiling with sample (30 seconds)..."
+	@./$(BUILD_DIR)/benchmark_pool_vs_malloc 4 1000000 & \
+	PID=$$!; \
+	sleep 1; \
+	sample $$PID 30 -file pool_profile.txt; \
+	kill $$PID 2>/dev/null; \
+	echo "Profile saved to pool_profile.txt"
+
+#=============================================================================
 # Test targets
+#=============================================================================
+
 tests: $(BUILD_DIR) $(TEST_BINARIES)
 
 test_spsc_queue: $(TESTS_DIR)/test_spsc_queue.cpp $(INCLUDE_DIR)/spsc_queue.hpp
@@ -95,8 +229,12 @@ run-tests: tests
 # Clean build artifacts
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -rf profiling_results/*
 
+#=============================================================================
 # Convenience targets to run benchmarks
+#=============================================================================
+
 benchmark: all
 	./scripts/benchmark_zerocopy.sh
 
@@ -122,7 +260,7 @@ heartbeat-benchmark: $(BUILD_DIR) feed_handler_heartbeat heartbeat_mock_server
 
 # Snapshot recovery targets
 snapshot-recovery: $(BUILD_DIR) feed_handler_snapshot snapshot_mock_server
-	@echo "✅ Snapshot recovery extension built!"
+	@echo "Snapshot recovery extension built!"
 
 test-snapshot: snapshot-recovery
 	@echo "Running snapshot recovery tests..."
@@ -130,12 +268,52 @@ test-snapshot: snapshot-recovery
 
 # UDP benchmark targets
 udp-benchmark: $(BUILD_DIR) udp_mock_server udp_feed_handler
-	@echo "✅ UDP benchmark binaries built!"
+	@echo "UDP benchmark binaries built!"
 
 tcp-vs-udp: $(BUILD_DIR) tcp_vs_udp_benchmark udp_mock_server udp_feed_handler binary_mock_server
-	@echo "✅ TCP vs UDP comparison benchmark built!"
+	@echo "TCP vs UDP comparison benchmark built!"
 	@echo "Run: ./scripts/run_tcp_vs_udp_benchmark.sh"
+
+#=============================================================================
+# Help
+#=============================================================================
+
+help:
+	@echo "TCP-Socket Project Makefile"
+	@echo ""
+	@echo "Build Targets:"
+	@echo "  make all                  - Build all main binaries"
+	@echo "  make tests                - Build test binaries"
+	@echo "  make profiling            - Build baseline + optimized versions for profiling"
+	@echo "  make extension            - Build memory pool benchmark + false sharing demo"
+	@echo "  make clean                - Remove build artifacts"
+	@echo ""
+	@echo "Profiling Targets:"
+	@echo "  make profile              - Run full profiling analysis"
+	@echo "  make throughput-benchmark - Quick throughput comparison"
+	@echo "  make compare-profiling    - Compare profiling results"
+	@echo "  make perf-baseline        - Interactive perf report (baseline, Linux)"
+	@echo "  make perf-optimized       - Interactive perf report (optimized, Linux)"
+	@echo "  make flamegraph-baseline  - View baseline flamegraph"
+	@echo "  make flamegraph-optimized - View optimized flamegraph"
+	@echo ""
+	@echo "Extension Targets (Memory Pool & False Sharing):"
+	@echo "  make benchmark-pool       - Run pool vs malloc benchmark"
+	@echo "  make false-sharing-demo   - Run false sharing demonstration"
+	@echo "  make profile-pool-sample  - Profile pool with sample (macOS)"
+	@echo ""
+	@echo "Benchmark Targets:"
+	@echo "  make benchmark            - Run zerocopy benchmark"
+	@echo "  make socket-benchmark     - Run socket tuning benchmark"
+	@echo "  make heartbeat-benchmark  - Run heartbeat test"
+	@echo "  make tcp-vs-udp           - Build TCP vs UDP comparison"
+	@echo "  make test-snapshot        - Run snapshot recovery tests"
+	@echo ""
 
 .PHONY: all clean tests run-tests benchmark comparison feed-handler false-sharing \
         measure-false-sharing socket-benchmark heartbeat-benchmark \
-        snapshot-recovery test-snapshot udp-benchmark tcp-vs-udp
+        snapshot-recovery test-snapshot udp-benchmark tcp-vs-udp \
+        profiling profile compare-profiling throughput-benchmark \
+        perf-baseline perf-optimized flamegraph-baseline flamegraph-optimized \
+        extension benchmark-pool false-sharing-demo profile-pool-sample \
+        directories help

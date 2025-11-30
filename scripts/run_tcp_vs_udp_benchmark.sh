@@ -6,7 +6,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_ROOT/build"
 
 echo "==================================================================="
-echo "TCP vs UDP Feed Comparison (Exercise 6 Extension)"
+echo "TCP vs UDP Feed Comparison "
 echo "==================================================================="
 echo ""
 echo "This benchmark compares TCP vs UDP for market data feeds:"

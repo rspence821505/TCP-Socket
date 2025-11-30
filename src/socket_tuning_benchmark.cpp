@@ -297,7 +297,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (!csv_output && verbose) {
-    std::cout << "=== Socket Tuning Benchmark (Exercise 6) ===" << std::endl;
+    std::cout << "=== Socket Tuning Benchmark ===" << std::endl;
     std::cout << "Configuration:" << std::endl;
     std::cout << "  Host: " << host << ":" << port << std::endl;
     std::cout << "  Messages: " << num_messages << std::endl;

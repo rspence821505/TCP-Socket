@@ -1,5 +1,5 @@
 #!/bin/bash
-# Comprehensive socket tuning benchmark for Exercise 6
+# Comprehensive socket tuning benchmark
 # Tests different combinations of TCP_NODELAY, buffer sizes, and TCP_QUICKACK
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +11,7 @@ PORT=9999
 MESSAGES=10000
 
 echo "=================================================================="
-echo "Socket Tuning Benchmark (Exercise 6)"
+echo "Socket Tuning Benchmark"
 echo "=================================================================="
 echo ""
 echo "This benchmark will test various socket configurations:"

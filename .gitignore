@@ -45,3 +45,5 @@ tcp_*
 
 # Build directory
 build/
+
+weekly*
