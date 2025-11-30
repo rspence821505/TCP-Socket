@@ -14,6 +14,11 @@ TESTS_DIR = tests
 # Include path
 INCLUDES = -I$(INCLUDE_DIR)
 
+# Google Test configuration (Homebrew installation)
+GTEST_DIR = /opt/homebrew/opt/googletest
+GTEST_INCLUDES = -I$(GTEST_DIR)/include
+GTEST_LIBS = -L$(GTEST_DIR)/lib -lgtest -lgtest_main -pthread
+
 # Profiling flags
 PROFILE_FLAGS = -O2 -g -fno-omit-frame-pointer
 OPTIMIZE_FLAGS = -O3 -g -fno-omit-frame-pointer
@@ -28,9 +33,11 @@ BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server \
            socket_tuning_benchmark feed_handler_heartbeat heartbeat_mock_server \
            feed_handler_snapshot snapshot_mock_server \
            udp_mock_server udp_feed_handler tcp_vs_udp_benchmark \
+           text_mock_server feed_handler_text \
            benchmark_pool_vs_malloc false_sharing_demo benchmark_parsing_hotpath
 
-TEST_BINARIES = test_spsc_queue
+TEST_BINARIES = test_spsc_queue test_text_protocol test_binary_protocol test_order_book test_ring_buffer
+INTEGRATION_TEST_BINARIES = test_integration
 
 # Default target
 all: $(BUILD_DIR) $(BINARIES)
@@ -92,6 +99,36 @@ tcp_vs_udp_benchmark: $(SRC_DIR)/tcp_vs_udp_benchmark.cpp $(INCLUDE_DIR)/binary_
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/tcp_vs_udp_benchmark.cpp -o $(BUILD_DIR)/tcp_vs_udp_benchmark
 
 #=============================================================================
+# Text Protocol (newline-delimited ticks)
+#=============================================================================
+
+# Text mock server - sends "timestamp symbol price volume\n" format
+text_mock_server: $(BUILD_DIR) $(SRC_DIR)/text_mock_server.cpp $(INCLUDE_DIR)/text_protocol.hpp
+	@echo "Building text mock server..."
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/text_mock_server.cpp -o $(BUILD_DIR)/text_mock_server
+
+# Text feed handler - receives and parses text ticks
+feed_handler_text: $(BUILD_DIR) $(SRC_DIR)/feed_handler_text.cpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp
+	@echo "Building text feed handler..."
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_text.cpp -o $(BUILD_DIR)/feed_handler_text
+
+# Run text protocol test
+test-text-protocol: text_mock_server feed_handler_text
+	@echo "==================================================================="
+	@echo "Text Protocol Test"
+	@echo "==================================================================="
+	@echo ""
+	@echo "Starting text mock server on port 9999..."
+	@./$(BUILD_DIR)/text_mock_server 9999 10000 5 & \
+	SERVER_PID=$$!; \
+	sleep 1; \
+	echo "Starting text feed handler..."; \
+	./$(BUILD_DIR)/feed_handler_text 9999 127.0.0.1; \
+	kill $$SERVER_PID 2>/dev/null; \
+	echo ""; \
+	echo "Test complete!"
+
+#=============================================================================
 # Profiling Infrastructure
 #=============================================================================
 
@@ -117,22 +154,22 @@ profiling: $(BUILD_DIR) heartbeat_mock_server feed_handler_heartbeat_profile fee
 	@echo "   Optimized: $(BUILD_DIR)/feed_handler_heartbeat_optimized"
 	@echo ""
 	@echo "Next steps:"
-	@echo "   1. Run profiling:  ./scripts/profile_feed_handler.sh"
-	@echo "   2. Compare results: ./scripts/compare_profiling_results.sh"
-	@echo "   3. Quick benchmark: ./scripts/benchmark_throughput.sh"
+	@echo "   1. Run profiling:  ./profiling/profile_feed_handler.sh"
+	@echo "   2. Compare results: ./profiling/compare_profiling_results.sh"
+	@echo "   3. Quick benchmark: ./benchmarks/benchmark_throughput.sh"
 	@echo ""
 
 # Run profiling analysis
 profile: profiling
-	@./scripts/profile_feed_handler.sh
+	@./profiling/profile_feed_handler.sh
 
 # Compare profiling results
 compare-profiling:
-	@./scripts/compare_profiling_results.sh
+	@./profiling/compare_profiling_results.sh
 
 # Quick throughput test
 throughput-benchmark: profiling
-	@./scripts/benchmark_throughput.sh
+	@./benchmarks/benchmark_throughput.sh
 
 # Interactive perf report (Linux)
 perf-baseline:
@@ -235,8 +272,8 @@ ipc-cache-extension: $(BUILD_DIR) benchmark_parsing_hotpath
 	@echo "  ./$(BUILD_DIR)/benchmark_parsing_hotpath 10000000"
 	@echo ""
 	@echo "Measure performance counters (macOS):"
-	@echo "  chmod +x scripts/measure_performance_counters_macos.sh"
-	@echo "  ./scripts/measure_performance_counters_macos.sh"
+	@echo "  chmod +x benchmarks/benchmark_performance_counters_macos.sh"
+	@echo "  ./benchmarks/benchmark_performance_counters_macos.sh"
 	@echo ""
 	@echo "Profile with Instruments System Trace (macOS):"
 	@echo "  sudo instruments -t 'System Trace' \\"
@@ -260,8 +297,8 @@ benchmark-ipc: benchmark_parsing_hotpath
 measure-perf-counters: benchmark_parsing_hotpath
 	@echo "Running comprehensive performance counter measurement..."
 	@mkdir -p perf_counters
-	@chmod +x scripts/measure_performance_counters_macos.sh
-	@./scripts/measure_performance_counters_macos.sh \
+	@chmod +x benchmarks/benchmark_performance_counters_macos.sh
+	@./benchmarks/benchmark_performance_counters_macos.sh \
 		$(BUILD_DIR)/benchmark_parsing_hotpath 30
 
 # Profile with Instruments System Trace (macOS) - requires sudo
@@ -300,17 +337,122 @@ all-extensions: memory-pool-extension ipc-cache-extension
 	@echo ""
 
 #=============================================================================
-# Test targets
+# Test targets (Google Test)
 #=============================================================================
 
-tests: $(BUILD_DIR) $(TEST_BINARIES)
+tests: $(BUILD_DIR) $(addprefix $(BUILD_DIR)/,$(TEST_BINARIES))
 
-test_spsc_queue: $(TESTS_DIR)/test_spsc_queue.cpp $(INCLUDE_DIR)/spsc_queue.hpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(TESTS_DIR)/test_spsc_queue.cpp -o $(BUILD_DIR)/test_spsc_queue
+# SPSC Queue tests
+$(BUILD_DIR)/test_spsc_queue: $(TESTS_DIR)/test_spsc_queue.cpp $(INCLUDE_DIR)/spsc_queue.hpp
+	@echo "Building test_spsc_queue..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_spsc_queue.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_spsc_queue
 
-# Run tests
+# Text Protocol tests
+$(BUILD_DIR)/test_text_protocol: $(TESTS_DIR)/test_text_protocol.cpp $(INCLUDE_DIR)/text_protocol.hpp
+	@echo "Building test_text_protocol..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_text_protocol.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_text_protocol
+
+# Binary Protocol tests
+$(BUILD_DIR)/test_binary_protocol: $(TESTS_DIR)/test_binary_protocol.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	@echo "Building test_binary_protocol..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_binary_protocol.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_binary_protocol
+
+# Order Book tests
+$(BUILD_DIR)/test_order_book: $(TESTS_DIR)/test_order_book.cpp $(INCLUDE_DIR)/order_book.hpp $(INCLUDE_DIR)/binary_protocol.hpp
+	@echo "Building test_order_book..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_order_book.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_order_book
+
+# Ring Buffer tests
+$(BUILD_DIR)/test_ring_buffer: $(TESTS_DIR)/test_ring_buffer.cpp $(INCLUDE_DIR)/ring_buffer.hpp
+	@echo "Building test_ring_buffer..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_ring_buffer.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_ring_buffer
+
+# Integration tests (server/client communication tests)
+$(BUILD_DIR)/test_integration: $(TESTS_DIR)/test_integration.cpp
+	@echo "Building test_integration..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_integration.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_integration
+
+# Build integration tests (requires binaries to be built first)
+integration-tests: $(BUILD_DIR) all $(addprefix $(BUILD_DIR)/,$(INTEGRATION_TEST_BINARIES))
+
+# Run integration tests
+run-integration-tests: integration-tests
+	@echo "==================================================================="
+	@echo "Running Integration Tests"
+	@echo "==================================================================="
+	@echo "Note: These tests spawn server/client processes"
+	@echo ""
+	@for test in $(INTEGRATION_TEST_BINARIES); do \
+		echo ""; \
+		echo "--- Running $$test ---"; \
+		./$(BUILD_DIR)/$$test --gtest_color=yes || exit 1; \
+	done
+	@echo ""
+	@echo "==================================================================="
+	@echo "Integration tests passed!"
+	@echo "==================================================================="
+
+# Run all tests (unit + integration)
+run-all-tests: run-tests run-integration-tests
+	@echo ""
+	@echo "==================================================================="
+	@echo "All unit and integration tests passed!"
+	@echo "==================================================================="
+
+# Run all tests
 run-tests: tests
-	./$(BUILD_DIR)/test_spsc_queue
+	@echo "==================================================================="
+	@echo "Running all Google Tests"
+	@echo "==================================================================="
+	@for test in $(TEST_BINARIES); do \
+		echo ""; \
+		echo "--- Running $$test ---"; \
+		./$(BUILD_DIR)/$$test --gtest_color=yes || exit 1; \
+	done
+	@echo ""
+	@echo "==================================================================="
+	@echo "All tests passed!"
+	@echo "==================================================================="
+
+# Run tests with verbose output
+run-tests-verbose: tests
+	@for test in $(TEST_BINARIES); do \
+		echo ""; \
+		echo "--- Running $$test ---"; \
+		./$(BUILD_DIR)/$$test --gtest_color=yes -v || exit 1; \
+	done
+
+# Run a single test binary (usage: make run-test TEST=test_spsc_queue)
+run-test: tests
+	@if [ -z "$(TEST)" ]; then \
+		echo "Usage: make run-test TEST=<test_name>"; \
+		echo "Available tests: $(TEST_BINARIES)"; \
+	else \
+		./$(BUILD_DIR)/$(TEST) --gtest_color=yes; \
+	fi
+
+# Run tests with filter (usage: make run-test-filter FILTER="*Throughput*")
+run-test-filter: tests
+	@if [ -z "$(FILTER)" ]; then \
+		echo "Usage: make run-test-filter FILTER=\"*Pattern*\""; \
+	else \
+		for test in $(TEST_BINARIES); do \
+			echo "--- Running $$test with filter $(FILTER) ---"; \
+			./$(BUILD_DIR)/$$test --gtest_color=yes --gtest_filter="$(FILTER)" || true; \
+		done; \
+	fi
 
 # Clean build artifacts
 clean:
@@ -323,7 +465,7 @@ clean:
 #=============================================================================
 
 benchmark: all
-	./scripts/benchmark_zerocopy.sh
+	./benchmarks/benchmark_zerocopy.sh
 
 comparison: all
 	./scripts/test_comparison.sh
@@ -332,10 +474,10 @@ feed-handler: $(BUILD_DIR) feed_handler_spsc binary_mock_server
 	./scripts/test_feed_handler.sh
 
 false-sharing: $(BUILD_DIR) feed_handler_spmc binary_mock_server
-	./scripts/benchmark_false_sharing.sh
+	./benchmarks/benchmark_false_sharing.sh
 
 measure-false-sharing: $(BUILD_DIR) feed_handler_spmc binary_mock_server
-	./scripts/measure_false_sharing.sh
+	./benchmarks/benchmark_false_sharing_measure.sh
 
 # Socket tuning benchmark
 socket-benchmark: $(BUILD_DIR) socket_tuning_benchmark binary_mock_server
@@ -370,10 +512,31 @@ help:
 	@echo ""
 	@echo "Build Targets:"
 	@echo "  make all                  - Build all main binaries"
-	@echo "  make tests                - Build test binaries"
+	@echo "  make tests                - Build test binaries (Google Test)"
 	@echo "  make profiling            - Build baseline + optimized versions for profiling"
 	@echo "  make all-extensions       - Build all extensions (memory pool + IPC/cache)"
 	@echo "  make clean                - Remove build artifacts"
+	@echo ""
+	@echo "Test Targets (Google Test):"
+	@echo "  make run-tests            - Run all tests"
+	@echo "  make run-tests-verbose    - Run all tests with verbose output"
+	@echo "  make run-test TEST=name   - Run a single test (e.g., TEST=test_spsc_queue)"
+	@echo "  make run-test-filter FILTER=\"*Pattern*\" - Run tests matching filter"
+	@echo ""
+	@echo "Available unit tests:"
+	@echo "  test_spsc_queue           - Lock-free SPSC queue tests"
+	@echo "  test_text_protocol        - Text protocol parser tests"
+	@echo "  test_binary_protocol      - Binary protocol serialization tests"
+	@echo "  test_order_book           - Order book tests"
+	@echo "  test_ring_buffer          - Ring buffer tests"
+	@echo ""
+	@echo "Integration Tests (Google Test):"
+	@echo "  make integration-tests    - Build integration tests"
+	@echo "  make run-integration-tests - Run integration tests (spawns server/client)"
+	@echo "  make run-all-tests        - Run unit + integration tests"
+	@echo ""
+	@echo "Available integration tests:"
+	@echo "  test_integration          - Server/client communication tests"
 	@echo ""
 	@echo "Profiling Targets:"
 	@echo "  make profile              - Run full profiling analysis"
@@ -409,7 +572,9 @@ help:
 	@echo "  IPC/Cache:    make ipc-cache-extension && make benchmark-ipc"
 	@echo ""
 
-.PHONY: all clean tests run-tests benchmark comparison feed-handler false-sharing \
+.PHONY: all clean tests run-tests run-tests-verbose run-test run-test-filter \
+        integration-tests run-integration-tests run-all-tests \
+        benchmark comparison feed-handler false-sharing \
         measure-false-sharing socket-benchmark heartbeat-benchmark \
         snapshot-recovery test-snapshot udp-benchmark tcp-vs-udp \
         profiling profile compare-profiling throughput-benchmark \
@@ -417,4 +582,4 @@ help:
         memory-pool-extension benchmark-pool false-sharing-demo profile-pool-sample \
         ipc-cache-extension benchmark-ipc measure-perf-counters \
         profile-ipc-instruments profile-ipc-sample all-extensions \
-        directories help
+        directories help test-text-protocol

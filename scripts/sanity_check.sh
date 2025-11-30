@@ -101,17 +101,31 @@ else
     error "Makefile not found"
 fi
 
-# Scripts
-for script in profile_feed_handler.sh compare_profiling_results.sh benchmark_throughput.sh; do
-    if [ -f "$PROJECT_ROOT/scripts/$script" ]; then
-        success "scripts/$script exists"
-        if [ -x "$PROJECT_ROOT/scripts/$script" ]; then
+# Scripts - profiling scripts
+for script in profile_feed_handler.sh compare_profiling_results.sh; do
+    if [ -f "$PROJECT_ROOT/profiling/$script" ]; then
+        success "profiling/$script exists"
+        if [ -x "$PROJECT_ROOT/profiling/$script" ]; then
             success "  - Is executable"
         else
-            warning "  - Not executable. Run: chmod +x scripts/$script"
+            warning "  - Not executable. Run: chmod +x profiling/$script"
         fi
     else
-        warning "scripts/$script missing"
+        warning "profiling/$script missing"
+    fi
+done
+
+# Scripts - benchmark scripts
+for script in benchmark_throughput.sh; do
+    if [ -f "$PROJECT_ROOT/benchmarks/$script" ]; then
+        success "benchmarks/$script exists"
+        if [ -x "$PROJECT_ROOT/benchmarks/$script" ]; then
+            success "  - Is executable"
+        else
+            warning "  - Not executable. Run: chmod +x benchmarks/$script"
+        fi
+    else
+        warning "benchmarks/$script missing"
     fi
 done
 
@@ -262,8 +276,8 @@ if [ $ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
     echo ""
     echo "Next steps:"
     echo "  1. Build:    make profiling"
-    echo "  2. Profile:  ./scripts/profile_feed_handler.sh"
-    echo "  3. Compare:  ./scripts/compare_profiling_results.sh"
+    echo "  2. Profile:  ./profiling/profile_feed_handler.sh"
+    echo "  3. Compare:  ./profiling/compare_profiling_results.sh"
     echo ""
 elif [ $ERRORS -eq 0 ]; then
     echo -e "${YELLOW}⚠️  ${WARNINGS} warning(s) found${NC}"

@@ -1,88 +1,163 @@
-#include "spsc_queue.hpp"
-#include <algorithm>
-#include <chrono>
-#include <iostream>
-#include <numeric>
+#include <gtest/gtest.h>
 #include <thread>
 #include <vector>
+#include <atomic>
+#include <chrono>
+#include <numeric>
+#include <algorithm>
+
+#include "spsc_queue.hpp"
 
 using namespace std::chrono;
 
-struct Message {
-  uint64_t timestamp_ns; // When received
-  uint32_t symbol_id;
-  double price;
-  uint64_t volume;
+// Test fixture for SPSC Queue tests
+class SPSCQueueTest : public ::testing::Test {
+protected:
+  void SetUp() override {}
+  void TearDown() override {}
 };
 
-// Helper: Get current timestamp in nanoseconds
-inline uint64_t now_ns() {
-  return duration_cast<nanoseconds>(
-             high_resolution_clock::now().time_since_epoch())
-      .count();
+// Basic functionality tests
+TEST_F(SPSCQueueTest, DefaultConstructor) {
+  SPSCQueue<int> queue(16);
+  EXPECT_TRUE(queue.empty());
+  EXPECT_EQ(queue.size(), 0);
 }
 
-void test_basic_correctness() {
-  std::cout << "=== Basic Correctness Test ===" << std::endl;
+TEST_F(SPSCQueueTest, PushSingleItem) {
+  SPSCQueue<int> queue(16);
+  EXPECT_TRUE(queue.push(42));
+  EXPECT_FALSE(queue.empty());
+  EXPECT_EQ(queue.size(), 1);
+}
 
+TEST_F(SPSCQueueTest, PopSingleItem) {
+  SPSCQueue<int> queue(16);
+  queue.push(42);
+  auto item = queue.pop();
+  ASSERT_TRUE(item.has_value());
+  EXPECT_EQ(*item, 42);
+  EXPECT_TRUE(queue.empty());
+}
+
+TEST_F(SPSCQueueTest, PopEmptyQueue) {
+  SPSCQueue<int> queue(16);
+  auto item = queue.pop();
+  EXPECT_FALSE(item.has_value());
+}
+
+TEST_F(SPSCQueueTest, FIFOOrdering) {
   SPSCQueue<int> queue(16);
 
-  // Test push/pop
   for (int i = 0; i < 10; ++i) {
-    bool success = queue.push(i);
-    if (!success) {
-      std::cout << "Failed to push " << i << std::endl;
-    }
+    EXPECT_TRUE(queue.push(i));
   }
-
-  std::cout << "Pushed 10 items, queue size: " << queue.size() << std::endl;
 
   for (int i = 0; i < 10; ++i) {
     auto item = queue.pop();
-    if (item) {
-      std::cout << "Popped: " << *item << std::endl;
-      if (*item != i) {
-        std::cout << "ERROR: Expected " << i << ", got " << *item << std::endl;
-      }
-    }
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(*item, i);
   }
-
-  std::cout << "Queue empty: " << queue.empty() << std::endl;
-  std::cout << std::endl;
 }
 
-void test_latency_measurement() {
-  std::cout << "=== Latency Measurement Test ===" << std::endl;
+TEST_F(SPSCQueueTest, QueueCapacity) {
+  SPSCQueue<int> queue(4);  // Small capacity (rounds to power of 2)
 
-  constexpr size_t NUM_MESSAGES = 100000;
-  SPSCQueue<Message> queue(1024);
-  std::vector<uint64_t> latencies;
-  latencies.reserve(NUM_MESSAGES);
+  // Ring buffers reserve one slot to distinguish full from empty
+  // With capacity=4 (power of 2), usable slots = 3
+  size_t usable_capacity = queue.capacity() - 1;
 
+  // Fill the queue to usable capacity
+  for (size_t i = 0; i < usable_capacity; ++i) {
+    EXPECT_TRUE(queue.push(static_cast<int>(i)));
+  }
+
+  // Queue should now be full - additional push should fail
+  EXPECT_FALSE(queue.push(999));
+  EXPECT_EQ(queue.size(), usable_capacity);
+}
+
+TEST_F(SPSCQueueTest, WrapAround) {
+  SPSCQueue<int> queue(8);
+
+  // Push and pop multiple times to trigger wrap-around
+  for (int round = 0; round < 3; ++round) {
+    for (int i = 0; i < 6; ++i) {
+      EXPECT_TRUE(queue.push(round * 10 + i));
+    }
+    for (int i = 0; i < 6; ++i) {
+      auto item = queue.pop();
+      ASSERT_TRUE(item.has_value());
+      EXPECT_EQ(*item, round * 10 + i);
+    }
+  }
+}
+
+TEST_F(SPSCQueueTest, MoveOnlyType) {
+  SPSCQueue<std::unique_ptr<int>> queue(16);
+
+  auto ptr = std::make_unique<int>(42);
+  EXPECT_TRUE(queue.push(std::move(ptr)));
+  EXPECT_EQ(ptr, nullptr);  // ptr was moved
+
+  auto result = queue.pop();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(**result, 42);
+}
+
+// Struct for testing complex types
+struct TestMessage {
+  uint64_t timestamp;
+  uint32_t id;
+  double value;
+  char data[32];
+
+  bool operator==(const TestMessage& other) const {
+    return timestamp == other.timestamp && id == other.id && value == other.value;
+  }
+};
+
+TEST_F(SPSCQueueTest, ComplexType) {
+  SPSCQueue<TestMessage> queue(16);
+
+  TestMessage msg{12345, 100, 3.14, "test"};
+  EXPECT_TRUE(queue.push(msg));
+
+  auto result = queue.pop();
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->timestamp, 12345);
+  EXPECT_EQ(result->id, 100);
+  EXPECT_DOUBLE_EQ(result->value, 3.14);
+}
+
+// Concurrent tests
+class SPSCQueueConcurrentTest : public ::testing::Test {
+protected:
+  static constexpr size_t NUM_MESSAGES = 100000;
+};
+
+TEST_F(SPSCQueueConcurrentTest, ProducerConsumer) {
+  SPSCQueue<int> queue(1024);
   std::atomic<bool> producer_done{false};
+  std::atomic<size_t> consumed{0};
+  std::vector<int> received;
+  received.reserve(NUM_MESSAGES);
 
-  // Consumer thread: pop and measure latency
   std::thread consumer([&]() {
     while (!producer_done.load(std::memory_order_acquire) || !queue.empty()) {
-      auto msg = queue.pop();
-      if (msg) {
-        uint64_t end_ns = now_ns();
-        uint64_t latency_ns = end_ns - msg->timestamp_ns;
-        latencies.push_back(latency_ns);
+      auto item = queue.pop();
+      if (item) {
+        received.push_back(*item);
       } else {
-        // Queue empty, yield to producer
         std::this_thread::yield();
       }
     }
+    consumed.store(received.size(), std::memory_order_release);
   });
 
-  // Producer thread: generate and push messages
   std::thread producer([&]() {
     for (size_t i = 0; i < NUM_MESSAGES; ++i) {
-      Message msg{now_ns(), static_cast<uint32_t>(i % 100), 100.0 + i, 1000};
-
-      // Spin until we can push (blocking on full)
-      while (!queue.push(std::move(msg))) {
+      while (!queue.push(static_cast<int>(i))) {
         std::this_thread::yield();
       }
     }
@@ -92,33 +167,68 @@ void test_latency_measurement() {
   producer.join();
   consumer.join();
 
-  // Compute statistics
-  std::sort(latencies.begin(), latencies.end());
+  // Verify all messages received in order
+  EXPECT_EQ(consumed.load(), NUM_MESSAGES);
+  ASSERT_EQ(received.size(), NUM_MESSAGES);
 
-  uint64_t sum = std::accumulate(latencies.begin(), latencies.end(), 0ULL);
-  double mean_ns = static_cast<double>(sum) / latencies.size();
-
-  uint64_t p50 = latencies[latencies.size() * 50 / 100];
-  uint64_t p95 = latencies[latencies.size() * 95 / 100];
-  uint64_t p99 = latencies[latencies.size() * 99 / 100];
-  uint64_t max = latencies.back();
-
-  std::cout << "Messages processed: " << latencies.size() << std::endl;
-  std::cout << "Latency (push -> pop):" << std::endl;
-  std::cout << "  Mean: " << mean_ns << " ns" << std::endl;
-  std::cout << "  p50:  " << p50 << " ns" << std::endl;
-  std::cout << "  p95:  " << p95 << " ns" << std::endl;
-  std::cout << "  p99:  " << p99 << " ns" << std::endl;
-  std::cout << "  Max:  " << max << " ns" << std::endl;
-  std::cout << std::endl;
+  for (size_t i = 0; i < NUM_MESSAGES; ++i) {
+    EXPECT_EQ(received[i], static_cast<int>(i)) << "Mismatch at index " << i;
+  }
 }
 
-void test_throughput() {
-  std::cout << "=== Throughput Test ===" << std::endl;
+TEST_F(SPSCQueueConcurrentTest, LatencyMeasurement) {
+  SPSCQueue<uint64_t> queue(1024);
+  std::atomic<bool> producer_done{false};
+  std::vector<uint64_t> latencies;
+  latencies.reserve(NUM_MESSAGES);
 
-  constexpr size_t NUM_MESSAGES = 10000000;
+  auto now_ns = []() {
+    return duration_cast<nanoseconds>(
+        high_resolution_clock::now().time_since_epoch()
+    ).count();
+  };
+
+  std::thread consumer([&]() {
+    while (!producer_done.load(std::memory_order_acquire) || !queue.empty()) {
+      auto timestamp = queue.pop();
+      if (timestamp) {
+        uint64_t latency = now_ns() - *timestamp;
+        latencies.push_back(latency);
+      } else {
+        std::this_thread::yield();
+      }
+    }
+  });
+
+  std::thread producer([&]() {
+    for (size_t i = 0; i < NUM_MESSAGES; ++i) {
+      while (!queue.push(now_ns())) {
+        std::this_thread::yield();
+      }
+    }
+    producer_done.store(true, std::memory_order_release);
+  });
+
+  producer.join();
+  consumer.join();
+
+  ASSERT_EQ(latencies.size(), NUM_MESSAGES);
+
+  // Calculate statistics
+  std::sort(latencies.begin(), latencies.end());
+  uint64_t p50 = latencies[latencies.size() * 50 / 100];
+  uint64_t p99 = latencies[latencies.size() * 99 / 100];
+
+  // Latency should be reasonable (< 1ms for p99)
+  EXPECT_LT(p50, 1000000) << "p50 latency too high: " << p50 << " ns";
+  EXPECT_LT(p99, 10000000) << "p99 latency too high: " << p99 << " ns";
+
+  std::cout << "  Latency p50: " << p50 << " ns, p99: " << p99 << " ns" << std::endl;
+}
+
+TEST_F(SPSCQueueConcurrentTest, Throughput) {
+  constexpr size_t THROUGHPUT_MESSAGES = 10000000;
   SPSCQueue<int> queue(4096);
-
   std::atomic<bool> producer_done{false};
   std::atomic<size_t> consumed{0};
 
@@ -138,7 +248,7 @@ void test_throughput() {
   });
 
   std::thread producer([&]() {
-    for (size_t i = 0; i < NUM_MESSAGES; ++i) {
+    for (size_t i = 0; i < THROUGHPUT_MESSAGES; ++i) {
       while (!queue.push(static_cast<int>(i))) {
         std::this_thread::yield();
       }
@@ -152,19 +262,11 @@ void test_throughput() {
   auto end = high_resolution_clock::now();
   auto duration_ms = duration_cast<milliseconds>(end - start).count();
 
+  EXPECT_EQ(consumed.load(), THROUGHPUT_MESSAGES);
+
   double msgs_per_sec = (static_cast<double>(consumed) / duration_ms) * 1000.0;
+  std::cout << "  Throughput: " << static_cast<size_t>(msgs_per_sec) << " msgs/sec" << std::endl;
 
-  std::cout << "Processed: " << consumed << " messages" << std::endl;
-  std::cout << "Time: " << duration_ms << " ms" << std::endl;
-  std::cout << "Throughput: " << static_cast<size_t>(msgs_per_sec)
-            << " msgs/sec" << std::endl;
-  std::cout << std::endl;
-}
-
-int main() {
-  test_basic_correctness();
-  test_latency_measurement();
-  test_throughput();
-
-  return 0;
+  // Expect at least 1M msgs/sec on modern hardware
+  EXPECT_GT(msgs_per_sec, 1000000) << "Throughput below 1M msgs/sec";
 }

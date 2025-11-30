@@ -338,5 +338,5 @@ else
 fi
 echo ""
 echo "Quick throughput comparison:"
-echo "  ./scripts/benchmark_throughput.sh"
+echo "  ./benchmarks/benchmark_throughput.sh"
 echo ""

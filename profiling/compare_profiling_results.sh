@@ -16,7 +16,7 @@ echo ""
 
 if [ ! -d "$RESULTS_DIR" ]; then
     echo "❌ No profiling results found at $RESULTS_DIR"
-    echo "   Run: ./scripts/profile_feed_handler.sh"
+    echo "   Run: ./profiling/profile_feed_handler.sh"
     exit 1
 fi
 
@@ -122,7 +122,7 @@ if [ "$PLATFORM" = "Darwin" ]; then
         echo "==================================================================="
         echo ""
         echo "Run the throughput benchmark for direct comparison:"
-        echo "  ./scripts/benchmark_throughput.sh"
+        echo "  ./benchmarks/benchmark_throughput.sh"
         echo ""
     fi
 
