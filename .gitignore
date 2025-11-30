@@ -41,7 +41,7 @@
 *.dwo
 
 
-tcp_*
+tcp_exe*
 
 # Build directory
 build/
