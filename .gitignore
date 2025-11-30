@@ -47,3 +47,5 @@ tcp_exe*
 build/
 
 weekly*
+
+tcp_socket_todo.md

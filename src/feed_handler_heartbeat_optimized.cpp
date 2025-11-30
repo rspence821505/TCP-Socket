@@ -10,7 +10,7 @@
 #include "binary_protocol.hpp"
 #include "connection_manager.hpp"
 #include "ring_buffer.hpp"
-#include "sequence_tracker_optimized.hpp"
+#include "sequence_tracker.hpp"
 
 // Helper: Get current timestamp in nanoseconds
 inline uint64_t now_ns() {

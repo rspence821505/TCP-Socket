@@ -33,7 +33,7 @@ BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server \
            socket_tuning_benchmark feed_handler_heartbeat heartbeat_mock_server \
            feed_handler_snapshot snapshot_mock_server \
            udp_mock_server udp_feed_handler tcp_vs_udp_benchmark \
-           text_mock_server feed_handler_text \
+           text_mock_server feed_handler_text feed_handler \
            benchmark_pool_vs_malloc false_sharing_demo benchmark_parsing_hotpath
 
 TEST_BINARIES = test_spsc_queue test_text_protocol test_binary_protocol test_order_book test_ring_buffer
@@ -111,6 +111,11 @@ text_mock_server: $(BUILD_DIR) $(SRC_DIR)/text_mock_server.cpp $(INCLUDE_DIR)/te
 feed_handler_text: $(BUILD_DIR) $(SRC_DIR)/feed_handler_text.cpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp
 	@echo "Building text feed handler..."
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_text.cpp -o $(BUILD_DIR)/feed_handler_text
+
+# Unified feed handler with CLI interface
+feed_handler: $(BUILD_DIR) $(SRC_DIR)/feed_main.cpp $(INCLUDE_DIR)/cli_parser.hpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp $(INCLUDE_DIR)/order_book.hpp
+	@echo "Building unified feed handler..."
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_main.cpp -o $(BUILD_DIR)/feed_handler
 
 # Run text protocol test
 test-text-protocol: text_mock_server feed_handler_text
