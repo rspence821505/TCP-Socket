@@ -165,10 +165,11 @@ else
     warning "sequence_tracker_optimized.hpp missing (needed for optimized build)"
 fi
 
-if [ -f "$PROJECT_ROOT/src/feed_handler_heartbeat_optimized.cpp" ]; then
-    success "feed_handler_heartbeat_optimized.cpp exists"
+# feed_handler_heartbeat.cpp now contains the optimized implementation
+if [ -f "$PROJECT_ROOT/src/feed_handler_heartbeat.cpp" ]; then
+    success "feed_handler_heartbeat.cpp exists (with optimizations)"
 else
-    warning "feed_handler_heartbeat_optimized.cpp missing (needed for optimized build)"
+    warning "feed_handler_heartbeat.cpp missing"
 fi
 
 echo ""

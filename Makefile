@@ -36,7 +36,7 @@ BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server \
            text_mock_server feed_handler_text feed_handler \
            benchmark_pool_vs_malloc false_sharing_demo benchmark_parsing_hotpath
 
-TEST_BINARIES = test_spsc_queue test_text_protocol test_binary_protocol test_order_book test_ring_buffer
+TEST_BINARIES = test_spsc_queue test_text_protocol test_binary_protocol test_order_book test_ring_buffer test_malformed_input test_stress test_sequence_tracker test_common
 INTEGRATION_TEST_BINARIES = test_integration
 
 # Default target
@@ -144,19 +144,12 @@ feed_handler_heartbeat_profile: $(SRC_DIR)/feed_handler_heartbeat.cpp $(INCLUDE_
 		$(SRC_DIR)/feed_handler_heartbeat.cpp \
 		-o $(BUILD_DIR)/feed_handler_heartbeat_profile
 
-# Optimized version with all improvements
-feed_handler_heartbeat_optimized: $(SRC_DIR)/feed_handler_heartbeat_optimized.cpp $(INCLUDE_DIR)/sequence_tracker_optimized.hpp $(INCLUDE_DIR)/*.hpp
-	@echo "Building optimized version improvements..."
-	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
-		$(SRC_DIR)/feed_handler_heartbeat_optimized.cpp \
-		-o $(BUILD_DIR)/feed_handler_heartbeat_optimized
-
-# Build both versions for comparison
-profiling: $(BUILD_DIR) heartbeat_mock_server feed_handler_heartbeat_profile feed_handler_heartbeat_optimized
+# Build profiling version for analysis
+profiling: $(BUILD_DIR) heartbeat_mock_server feed_handler_heartbeat_profile feed_handler_heartbeat
 	@echo ""
 	@echo "Profiling builds complete!"
-	@echo "   Baseline:  $(BUILD_DIR)/feed_handler_heartbeat_profile"
-	@echo "   Optimized: $(BUILD_DIR)/feed_handler_heartbeat_optimized"
+	@echo "   Profile:   $(BUILD_DIR)/feed_handler_heartbeat_profile"
+	@echo "   Optimized: $(BUILD_DIR)/feed_handler_heartbeat"
 	@echo ""
 	@echo "Next steps:"
 	@echo "   1. Run profiling:  ./profiling/profile_feed_handler.sh"
@@ -382,6 +375,34 @@ $(BUILD_DIR)/test_ring_buffer: $(TESTS_DIR)/test_ring_buffer.cpp $(INCLUDE_DIR)/
 		$(TESTS_DIR)/test_ring_buffer.cpp \
 		$(GTEST_LIBS) -o $(BUILD_DIR)/test_ring_buffer
 
+# Malformed Input tests
+$(BUILD_DIR)/test_malformed_input: $(TESTS_DIR)/test_malformed_input.cpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/ring_buffer.hpp
+	@echo "Building test_malformed_input..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_malformed_input.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_malformed_input
+
+# Stress tests (high load, backpressure, failure modes)
+$(BUILD_DIR)/test_stress: $(TESTS_DIR)/test_stress.cpp $(INCLUDE_DIR)/order_book.hpp $(INCLUDE_DIR)/spsc_queue.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/binary_protocol.hpp
+	@echo "Building test_stress..."
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_stress.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_stress
+
+# Sequence Tracker tests
+$(BUILD_DIR)/test_sequence_tracker: $(TESTS_DIR)/test_sequence_tracker.cpp $(INCLUDE_DIR)/sequence_tracker.hpp
+	@echo "Building test_sequence_tracker..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_sequence_tracker.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_sequence_tracker
+
+# Common utilities tests
+$(BUILD_DIR)/test_common: $(TESTS_DIR)/test_common.cpp $(INCLUDE_DIR)/common.hpp
+	@echo "Building test_common..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_common.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_common
+
 # Integration tests (server/client communication tests)
 $(BUILD_DIR)/test_integration: $(TESTS_DIR)/test_integration.cpp
 	@echo "Building test_integration..."
@@ -492,6 +513,15 @@ socket-benchmark: $(BUILD_DIR) socket_tuning_benchmark binary_mock_server
 heartbeat-benchmark: $(BUILD_DIR) feed_handler_heartbeat heartbeat_mock_server
 	./scripts/run_heartbeat_test.sh
 
+# Performance regression tests (validates performance targets)
+run-perf-test: all
+	@echo "Running performance regression tests..."
+	@./benchmarks/run_perf_regression.sh
+
+run-perf-test-quick: all
+	@echo "Running quick performance regression tests..."
+	@./benchmarks/run_perf_regression.sh --quick
+
 # Snapshot recovery targets
 snapshot-recovery: $(BUILD_DIR) feed_handler_snapshot snapshot_mock_server
 	@echo "Snapshot recovery extension built!"
@@ -571,6 +601,8 @@ help:
 	@echo "  make heartbeat-benchmark  - Run heartbeat test"
 	@echo "  make tcp-vs-udp           - Build TCP vs UDP comparison"
 	@echo "  make test-snapshot        - Run snapshot recovery tests"
+	@echo "  make run-perf-test        - Run performance regression tests (full)"
+	@echo "  make run-perf-test-quick  - Run quick performance regression tests"
 	@echo ""
 	@echo "Quick Start (Extensions):"
 	@echo "  Memory Pool:  make memory-pool-extension && make benchmark-pool"
@@ -587,4 +619,4 @@ help:
         memory-pool-extension benchmark-pool false-sharing-demo profile-pool-sample \
         ipc-cache-extension benchmark-ipc measure-perf-counters \
         profile-ipc-instruments profile-ipc-sample all-extensions \
-        directories help test-text-protocol
+        directories help test-text-protocol run-perf-test run-perf-test-quick

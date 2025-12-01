@@ -1,18 +1,15 @@
-#include <algorithm>
 #include <arpa/inet.h>
 #include <atomic>
-#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <numeric>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
-#include <vector>
 
+#include "common.hpp"
 #include "spsc_queue.hpp"
 #include "text_protocol.hpp"
 
@@ -33,53 +30,6 @@ struct TimedTextTick {
   TextTick tick;
   uint64_t recv_timestamp_ns;
   uint64_t parse_timestamp_ns;
-};
-
-// Get current timestamp in nanoseconds
-inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()
-  ).count();
-}
-
-// Latency statistics
-class LatencyStats {
-public:
-  void reserve(size_t n) {
-    latencies_.reserve(n);
-  }
-
-  void add(uint64_t latency_ns) {
-    latencies_.push_back(latency_ns);
-  }
-
-  void print(const std::string& name) const {
-    if (latencies_.empty()) {
-      std::cout << name << ": No data" << std::endl;
-      return;
-    }
-
-    std::vector<uint64_t> sorted = latencies_;
-    std::sort(sorted.begin(), sorted.end());
-
-    uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
-    double mean = static_cast<double>(sum) / sorted.size();
-    uint64_t p50 = sorted[sorted.size() * 50 / 100];
-    uint64_t p95 = sorted[sorted.size() * 95 / 100];
-    uint64_t p99 = sorted[sorted.size() * 99 / 100];
-    uint64_t max_val = sorted.back();
-
-    std::cout << name << ":" << std::endl;
-    std::cout << "  Count: " << sorted.size() << std::endl;
-    std::cout << "  Mean:  " << mean / 1000.0 << " us" << std::endl;
-    std::cout << "  p50:   " << p50 / 1000.0 << " us" << std::endl;
-    std::cout << "  p95:   " << p95 / 1000.0 << " us" << std::endl;
-    std::cout << "  p99:   " << p99 / 1000.0 << " us" << std::endl;
-    std::cout << "  Max:   " << max_val / 1000.0 << " us" << std::endl;
-  }
-
-private:
-  std::vector<uint64_t> latencies_;
 };
 
 // Reader thread: receives data, parses lines, enqueues ticks

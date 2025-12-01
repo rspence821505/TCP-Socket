@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
-#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -12,17 +11,11 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 #include "socket_config.hpp"
 
-// Helper: Get current timestamp in nanoseconds
-inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::high_resolution_clock::now().time_since_epoch())
-      .count();
-}
-
-// Simple latency statistics
-struct LatencyStats {
+// Benchmark-specific latency statistics with CSV output
+struct BenchmarkLatencyStats {
   std::vector<uint64_t> latencies_ns;
 
   void reserve(size_t n) { latencies_ns.reserve(n); }
@@ -123,14 +116,14 @@ int connect_with_config(const std::string &host, int port,
 }
 
 // Run benchmark with specific socket configuration
-LatencyStats run_benchmark(const std::string &host, int port,
+BenchmarkLatencyStats run_benchmark(const std::string &host, int port,
                            const SocketConfig &config, size_t num_messages,
                            bool verbose = true) {
   if (verbose) {
     std::cout << "\n=== Testing: " << config.to_string() << " ===" << std::endl;
   }
 
-  LatencyStats stats;
+  BenchmarkLatencyStats stats;
   stats.reserve(num_messages);
 
   // Connect to server
@@ -304,7 +297,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Run benchmark
-  LatencyStats stats = run_benchmark(host, port, config, num_messages, verbose);
+  BenchmarkLatencyStats stats = run_benchmark(host, port, config, num_messages, verbose);
 
   // Print results
   if (csv_output) {

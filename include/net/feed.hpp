@@ -30,6 +30,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <fcntl.h>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -37,28 +38,23 @@
 #include <netinet/tcp.h>
 #include <numeric>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
 
-// Include protocol parsers
+// Include protocol parsers and common utilities
 #include "../binary_protocol.hpp"
+#include "../common.hpp"
 #include "../text_protocol.hpp"
 #include "../spsc_queue.hpp"
 #include "../order_book.hpp"
 
 namespace net {
 
-//=============================================================================
-// Utility Functions
-//=============================================================================
-
-inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::high_resolution_clock::now().time_since_epoch()
-  ).count();
-}
+// Use global now_ns() from common.hpp
+using ::now_ns;
 
 //=============================================================================
 // Configuration
@@ -167,8 +163,10 @@ private:
 
 class Connection {
 public:
-  Connection(const std::string& host, uint16_t port, bool verbose = false)
-      : host_(host), port_(port), verbose_(verbose), sockfd_(-1) {}
+  Connection(const std::string& host, uint16_t port, bool verbose = false,
+             int connect_timeout_sec = 5)
+      : host_(host), port_(port), verbose_(verbose)
+      , connect_timeout_sec_(connect_timeout_sec), sockfd_(-1) {}
 
   ~Connection() { disconnect(); }
 
@@ -200,12 +198,57 @@ public:
       std::cout << "[Connection] Connecting to " << host_ << ":" << port_ << "...\n";
     }
 
-    if (::connect(sockfd_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+    // Set non-blocking for connect with timeout
+    int flags = fcntl(sockfd_, F_GETFL, 0);
+    fcntl(sockfd_, F_SETFL, flags | O_NONBLOCK);
+
+    int connect_result = ::connect(sockfd_, (struct sockaddr*)&server_addr, sizeof(server_addr));
+
+    if (connect_result < 0 && errno == EINPROGRESS) {
+      // Wait for connection with timeout
+      fd_set write_fds;
+      FD_ZERO(&write_fds);
+      FD_SET(sockfd_, &write_fds);
+
+      struct timeval tv;
+      tv.tv_sec = connect_timeout_sec_;
+      tv.tv_usec = 0;
+
+      int select_result = select(sockfd_ + 1, nullptr, &write_fds, nullptr, &tv);
+
+      if (select_result <= 0) {
+        if (verbose_) {
+          if (select_result == 0) {
+            std::cerr << "[Connection] Connect timeout\n";
+          } else {
+            perror("[Connection] select");
+          }
+        }
+        close(sockfd_);
+        sockfd_ = -1;
+        return false;
+      }
+
+      // Check if connection was successful
+      int error = 0;
+      socklen_t len = sizeof(error);
+      if (getsockopt(sockfd_, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
+        if (verbose_) {
+          std::cerr << "[Connection] Connect failed: " << strerror(error) << "\n";
+        }
+        close(sockfd_);
+        sockfd_ = -1;
+        return false;
+      }
+    } else if (connect_result < 0) {
       if (verbose_) perror("connect");
       close(sockfd_);
       sockfd_ = -1;
       return false;
     }
+
+    // Set back to blocking mode
+    fcntl(sockfd_, F_SETFL, flags);
 
     if (verbose_) {
       std::cout << "[Connection] Connected!\n";
@@ -227,6 +270,7 @@ private:
   std::string host_;
   uint16_t port_;
   bool verbose_;
+  int connect_timeout_sec_;
   int sockfd_;
 };
 

@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <cerrno>
-#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -13,14 +12,8 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 #include "udp_protocol.hpp"
-
-// Helper: Get current timestamp in nanoseconds
-inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-    std::chrono::high_resolution_clock::now().time_since_epoch()
-  ).count();
-}
 
 // Statistics
 struct UDPFeedStats {

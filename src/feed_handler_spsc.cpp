@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
-#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -13,6 +12,7 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 #include "ring_buffer.hpp"
 #include "spsc_queue.hpp"
 
@@ -27,15 +27,8 @@ struct TimedMessage {
       : tick(t), recv_timestamp_ns(recv_ts), parse_timestamp_ns(parse_ts) {}
 };
 
-// Helper: Get current timestamp in nanoseconds
-inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::high_resolution_clock::now().time_since_epoch())
-      .count();
-}
-
-// Statistics collector
-struct LatencyStats {
+// Specialized statistics collector for feed handler latency breakdown
+struct FeedLatencyStats {
   std::vector<uint64_t> recv_to_parse_ns;    // Network + parsing
   std::vector<uint64_t> parse_to_process_ns; // Queue + processing
   std::vector<uint64_t> total_latency_ns;    // End-to-end
@@ -226,7 +219,7 @@ class ConsumerThread {
 private:
   SPSCQueue<TimedMessage> &queue_;
   std::atomic<bool> &reader_done_;
-  LatencyStats stats_;
+  FeedLatencyStats stats_;
   uint64_t messages_processed_;
 
 public:
@@ -270,7 +263,7 @@ public:
               << " messages" << std::endl;
   }
 
-  const LatencyStats &get_stats() const { return stats_; }
+  const FeedLatencyStats &get_stats() const { return stats_; }
   uint64_t get_message_count() const { return messages_processed_; }
 };
 

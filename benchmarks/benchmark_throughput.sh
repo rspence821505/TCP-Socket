@@ -49,9 +49,9 @@ run_benchmark() {
 # Baseline
 run_benchmark "feed_handler_heartbeat_profile" "Baseline (Original)"
 
-# Optimized
-if [ -f "$BUILD_DIR/feed_handler_heartbeat_optimized" ]; then
-    run_benchmark "feed_handler_heartbeat_optimized" "Optimized"
+# Optimized (now the default feed_handler_heartbeat)
+if [ -f "$BUILD_DIR/feed_handler_heartbeat" ]; then
+    run_benchmark "feed_handler_heartbeat" "Optimized"
 else
     echo "⚠️  Optimized binary not found. Skipping."
 fi

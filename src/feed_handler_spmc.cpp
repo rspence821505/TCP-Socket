@@ -2,7 +2,6 @@
 #include <arpa/inet.h>
 #include <array>
 #include <cerrno>
-#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
@@ -14,6 +13,7 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 #include "ring_buffer.hpp"
 #include "spmc_queue.hpp"
 
@@ -27,13 +27,6 @@ struct TimedMessage {
   TimedMessage(const BinaryTick &t, uint64_t recv_ts, uint64_t parse_ts)
       : tick(t), recv_timestamp_ns(recv_ts), parse_timestamp_ns(parse_ts) {}
 };
-
-// Helper: Get current timestamp in nanoseconds
-inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::high_resolution_clock::now().time_since_epoch())
-      .count();
-}
 
 // CRITICAL: This structure demonstrates FALSE SHARING
 // Without padding, each consumer's counters are adjacent in memory

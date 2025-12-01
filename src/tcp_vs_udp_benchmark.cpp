@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
-#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
@@ -14,18 +13,12 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 #include "socket_config.hpp"
 #include "udp_protocol.hpp"
 
-// Helper: Get current timestamp in nanoseconds
-inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::high_resolution_clock::now().time_since_epoch())
-      .count();
-}
-
-// Latency statistics
-struct LatencyStats {
+// Protocol comparison latency statistics
+struct ProtocolLatencyStats {
   std::vector<uint64_t> latencies_ns;
   uint64_t messages_received = 0;
   uint64_t gaps_detected = 0;
@@ -85,12 +78,12 @@ struct LatencyStats {
 };
 
 // TCP benchmark
-LatencyStats run_tcp_benchmark(const std::string &host, int port,
+ProtocolLatencyStats run_tcp_benchmark(const std::string &host, int port,
                                const SocketConfig &config, size_t num_messages) {
   std::cout << "\n=== TCP Benchmark ===" << std::endl;
   std::cout << "Config: " << config.to_string() << std::endl;
 
-  LatencyStats stats;
+  ProtocolLatencyStats stats;
 
   // Connect
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -192,12 +185,12 @@ LatencyStats run_tcp_benchmark(const std::string &host, int port,
 }
 
 // UDP benchmark with gap tracking
-LatencyStats run_udp_benchmark(const std::string &host, int udp_port,
+ProtocolLatencyStats run_udp_benchmark(const std::string &host, int udp_port,
                                int tcp_port, size_t num_messages,
                                std::chrono::seconds timeout) {
   std::cout << "\n=== UDP Benchmark ===" << std::endl;
 
-  LatencyStats stats;
+  ProtocolLatencyStats stats;
 
   // Create UDP socket
   int udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -352,8 +345,8 @@ LatencyStats run_udp_benchmark(const std::string &host, int udp_port,
   return stats;
 }
 
-void print_comparison(const LatencyStats &tcp_stats,
-                      const LatencyStats &udp_stats) {
+void print_comparison(const ProtocolLatencyStats &tcp_stats,
+                      const ProtocolLatencyStats &udp_stats) {
   std::cout << "\n==================================================================="
             << std::endl;
   std::cout << "TCP vs UDP COMPARISON" << std::endl;
@@ -421,7 +414,7 @@ int main(int argc, char *argv[]) {
 
   // TCP benchmark with TCP_NODELAY
   SocketConfig tcp_config(true, 65536, 65536, false);
-  LatencyStats tcp_stats =
+  ProtocolLatencyStats tcp_stats =
       run_tcp_benchmark(host, tcp_port, tcp_config, num_messages);
 
   if (tcp_only) {
@@ -434,7 +427,7 @@ int main(int argc, char *argv[]) {
   std::this_thread::sleep_for(std::chrono::seconds(5));
 
   // UDP benchmark
-  LatencyStats udp_stats = run_udp_benchmark(
+  ProtocolLatencyStats udp_stats = run_udp_benchmark(
       host, udp_port, tcp_control_port, num_messages, std::chrono::seconds(60));
 
   if (csv_output) {

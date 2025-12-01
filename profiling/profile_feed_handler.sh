@@ -298,13 +298,13 @@ echo "==================================================================="
 echo "STEP 2: Optimized Profile"
 echo "==================================================================="
 
-if [ -f "$BUILD_DIR/feed_handler_heartbeat_optimized" ]; then
+if [ -f "$BUILD_DIR/feed_handler_heartbeat" ]; then
     if [ $USE_PERF -eq 1 ]; then
-        profile_binary_perf "feed_handler_heartbeat_optimized" "optimized"
+        profile_binary_perf "feed_handler_heartbeat" "optimized"
     elif [ $USE_SAMPLE -eq 1 ]; then
-        profile_binary_sample "feed_handler_heartbeat_optimized" "optimized"
+        profile_binary_sample "feed_handler_heartbeat" "optimized"
     else
-        benchmark_binary "feed_handler_heartbeat_optimized" "optimized"
+        benchmark_binary "feed_handler_heartbeat" "optimized"
     fi
 else
     echo "⚠️  Optimized binary not found. Build it first with: make profiling"
