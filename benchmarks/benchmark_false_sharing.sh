@@ -14,21 +14,18 @@ echo "False Sharing Benchmark (Simple Version)"
 echo "==================================================================="
 echo ""
 
-# Compile
-echo "Compiling..."
-mkdir -p "$BUILD_DIR"
-g++ -std=c++17 -O3 -pthread -I"$INCLUDE_DIR" \
-    "$SRC_DIR/feed_handler_spmc.cpp" -o "$BUILD_DIR/feed_handler_spmc"
-
-g++ -std=c++17 -O3 -I"$INCLUDE_DIR" \
-    "$SRC_DIR/binary_mock_server.cpp" -o "$BUILD_DIR/binary_mock_server"
-
-if [ $? -ne 0 ]; then
-    echo "Compilation failed!"
-    exit 1
+# Check if binaries exist (use make to build them if needed)
+if [ ! -f "$BUILD_DIR/feed_handler_spmc" ] || [ ! -f "$BUILD_DIR/binary_mock_server" ]; then
+    echo "Building required binaries..."
+    cd "$PROJECT_ROOT"
+    make feed_handler_spmc binary_mock_server
+    if [ $? -ne 0 ]; then
+        echo "Compilation failed!"
+        exit 1
+    fi
 fi
 
-echo "Compilation successful"
+echo "Binaries ready"
 echo ""
 
 # Run 5 trials of each

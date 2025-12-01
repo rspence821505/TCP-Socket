@@ -112,21 +112,20 @@ BenchmarkLatencyStats run_benchmark(const std::string &host, int port,
     buffer.insert(buffer.end(), temp, temp + bytes_read);
 
     // Process all complete messages
-    while (buffer.size() >= 4) {
-      // Read length prefix
-      uint32_t length_net;
-      memcpy(&length_net, buffer.data(), 4);
-      uint32_t length = ntohl(length_net);
+    // New message format: [4-byte length][1-byte type][8-byte sequence][payload...]
+    while (buffer.size() >= MessageHeader::HEADER_SIZE) {
+      // Read header
+      MessageHeader header = deserialize_header(buffer.data());
 
-      // Validate length
-      if (length != BinaryTick::PAYLOAD_SIZE) {
-        LOG_ERROR("Benchmark", "Invalid message length: %u", length);
+      // Validate length (should be reasonable)
+      if (header.length > 1024) {
+        LOG_ERROR("Benchmark", "Invalid message length: %u", header.length);
         close(sockfd);
         return stats;
       }
 
       // Check if complete message is available
-      size_t total_size = 4 + length;
+      size_t total_size = MessageHeader::HEADER_SIZE + header.length;
       if (buffer.size() < total_size) {
         break; // Need more data
       }

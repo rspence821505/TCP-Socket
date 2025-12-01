@@ -80,36 +80,36 @@ bool drain_socket(Connection &conn) {
     }
 
     // Step 2: Process all complete messages in the buffer
+    // New message format: [4-byte length][1-byte type][8-byte sequence][payload...]
     while (true) {
-      // Check if we have at least 4 bytes for the length prefix
-      if (conn.buffer.size() < 4) {
-        break; // Need more data for length prefix
+      // Check if we have the full header (13 bytes)
+      if (conn.buffer.size() < MessageHeader::HEADER_SIZE) {
+        break; // Need more data for header
       }
 
-      // Read the length prefix (first 4 bytes)
-      uint32_t length_net;
-      memcpy(&length_net, conn.buffer.data(), 4);
-      uint32_t length = ntohl(length_net);
+      // Read the header
+      MessageHeader header = deserialize_header(conn.buffer.data());
 
-      // Sanity check: length should be reasonable (20 bytes for our format)
-      if (length != BinaryTick::PAYLOAD_SIZE) {
-        LOG_ERROR("Client", "Invalid message length: %u (expected %zu)",
-                  length, BinaryTick::PAYLOAD_SIZE);
+      // Sanity check: length should be reasonable
+      if (header.length > 1024) {
+        LOG_ERROR("Client", "Invalid message length: %u", header.length);
         return false; // Protocol error
       }
 
-      // Check if we have the complete message (length prefix + payload)
-      size_t total_message_size = 4 + length;
+      // Check if we have the complete message (header + payload)
+      size_t total_message_size = MessageHeader::HEADER_SIZE + header.length;
       if (conn.buffer.size() < total_message_size) {
         break; // Need more data for complete message
       }
 
-      // Extract and deserialize the payload
-      const char *payload = conn.buffer.data() + 4; // Skip length prefix
-      BinaryTick tick = deserialize_tick(payload);
+      // Extract and process based on message type
+      const char *payload = conn.buffer.data() + MessageHeader::HEADER_SIZE;
 
-      // Process the message
-      process_message(tick, conn);
+      if (header.type == MessageType::TICK) {
+        TickPayload tick = deserialize_tick_payload(payload);
+        process_message(tick, conn);
+      }
+      // Ignore other message types (heartbeat, etc.)
 
       // Remove processed bytes from buffer
       conn.buffer.erase(0, total_message_size);

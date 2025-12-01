@@ -9,6 +9,19 @@ echo "Zero-Copy Ring Buffer Benchmark"
 echo "===================================="
 echo ""
 
+# Portable timeout function (works on macOS and Linux)
+run_with_timeout() {
+    local timeout_seconds=$1
+    shift
+    "$@" &
+    local pid=$!
+    ( sleep "$timeout_seconds"; kill $pid 2>/dev/null ) &
+    local killer=$!
+    wait $pid 2>/dev/null
+    kill $killer 2>/dev/null
+    wait $killer 2>/dev/null
+}
+
 # Check if binaries exist
 if [ ! -f "$BUILD_DIR/binary_client" ] || [ ! -f "$BUILD_DIR/binary_client_zerocopy" ]; then
     echo "Binaries not found. Run 'make' from project root first!"
@@ -29,7 +42,7 @@ sleep 1
 echo ""
 echo "Test 1: Original Version (with buffer.erase())"
 echo "=================================================="
-timeout 15 "$BUILD_DIR/binary_client" 2>&1 | grep -A 5 "=== Statistics ==="
+run_with_timeout 15 "$BUILD_DIR/binary_client" 2>&1 | grep -A 5 "=== Statistics ==="
 
 # Restart servers
 kill $PID1 $PID2 $PID3 2>/dev/null
@@ -48,7 +61,7 @@ sleep 1
 echo ""
 echo "Test 2: Zero-Copy Version (with ring buffer)"
 echo "================================================"
-timeout 15 "$BUILD_DIR/binary_client_zerocopy" 2>&1 | grep -A 10 "=== Statistics ==="
+run_with_timeout 15 "$BUILD_DIR/binary_client_zerocopy" 2>&1 | grep -A 10 "=== Statistics ==="
 
 echo ""
 echo "Cleanup..."

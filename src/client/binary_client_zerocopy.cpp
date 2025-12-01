@@ -93,47 +93,47 @@ bool drain_socket(Connection &conn) {
     }
 
     // Step 4: Process all complete messages in the ring buffer
+    // New message format: [4-byte length][1-byte type][8-byte sequence][payload...]
     while (true) {
-      // Check if we have at least 4 bytes for the length prefix
-      if (conn.buffer.available() < 4) {
-        break; // Need more data for length prefix
+      // Check if we have the full header (13 bytes)
+      if (conn.buffer.available() < MessageHeader::HEADER_SIZE) {
+        break; // Need more data for header
       }
 
-      // Read the length prefix (first 4 bytes) - may need to handle wrap-around
-      char length_bytes[4];
-      if (!conn.buffer.peek_bytes(length_bytes, 4)) {
+      // Read the header - may need to handle wrap-around
+      char header_bytes[MessageHeader::HEADER_SIZE];
+      if (!conn.buffer.peek_bytes(header_bytes, MessageHeader::HEADER_SIZE)) {
         break; // Shouldn't happen, but safety check
       }
 
-      uint32_t length_net;
-      memcpy(&length_net, length_bytes, 4);
-      uint32_t length = ntohl(length_net);
+      MessageHeader header = deserialize_header(header_bytes);
 
-      // Sanity check: length should be reasonable (20 bytes for our format)
-      if (length != BinaryTick::PAYLOAD_SIZE) {
-        LOG_ERROR("Client", "Invalid message length: %u (expected %zu)",
-                  length, BinaryTick::PAYLOAD_SIZE);
+      // Sanity check: length should be reasonable
+      if (header.length > 1024) {
+        LOG_ERROR("Client", "Invalid message length: %u", header.length);
         return false; // Protocol error
       }
 
-      // Check if we have the complete message (length prefix + payload)
-      size_t total_message_size = 4 + length;
+      // Check if we have the complete message (header + payload)
+      size_t total_message_size = MessageHeader::HEADER_SIZE + header.length;
       if (conn.buffer.available() < total_message_size) {
         break; // Need more data for complete message
       }
 
-      // Step 5: Extract payload using zero-copy peek (or copy if wrapped)
-      char message_bytes[4 + BinaryTick::PAYLOAD_SIZE];
+      // Step 5: Extract the full message using zero-copy read
+      char message_bytes[MessageHeader::HEADER_SIZE + 256]; // Max message size
       if (!conn.buffer.read_bytes(message_bytes, total_message_size)) {
         break; // Shouldn't happen
       }
 
-      // Deserialize from the buffer
-      const char *payload = message_bytes + 4; // Skip length prefix
-      BinaryTick tick = deserialize_tick(payload);
+      // Extract and process based on message type
+      const char *payload = message_bytes + MessageHeader::HEADER_SIZE;
 
-      // Process the message
-      process_message(tick, conn);
+      if (header.type == MessageType::TICK) {
+        TickPayload tick = deserialize_tick_payload(payload);
+        process_message(tick, conn);
+      }
+      // Ignore other message types (heartbeat, etc.)
 
       // Track that we avoided a buffer shift (old method used buffer.erase())
       conn.buffer_shifts_avoided++;
