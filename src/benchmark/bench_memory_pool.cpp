@@ -6,9 +6,9 @@
 #include <cstring>
 #include <atomic>
 
+#include "common.hpp"
 #include "thread_local_pool.hpp"
 
-using namespace std::chrono;
 using namespace memory;
 
 /**
@@ -66,17 +66,17 @@ BenchResult bench_malloc_strings(const BenchConfig& config) {
   }
   
   // Benchmark
-  auto start = high_resolution_clock::now();
-  
+  uint64_t start = now_ns();
+
   for (size_t i = 0; i < config.iterations; i++) {
     const std::string& str = strings[i % strings.size()];
     char* ptr = static_cast<char*>(malloc(str.size() + 1));
     std::memcpy(ptr, str.c_str(), str.size() + 1);
     allocations.push_back(ptr);
   }
-  
-  auto end = high_resolution_clock::now();
-  double elapsed_ns = duration_cast<nanoseconds>(end - start).count();
+
+  uint64_t end = now_ns();
+  double elapsed_ns = static_cast<double>(end - start);
   
   // Cleanup
   for (char* ptr : allocations) {
@@ -114,16 +114,16 @@ BenchResult bench_pool_strings(const BenchConfig& config) {
   }
   
   // Benchmark
-  auto start = high_resolution_clock::now();
-  
+  uint64_t start = now_ns();
+
   for (size_t i = 0; i < config.iterations; i++) {
     const std::string& str = strings[i % strings.size()];
     char* ptr = pool.allocate_string(str.c_str(), str.size());
     allocations.push_back(ptr);
   }
-  
-  auto end = high_resolution_clock::now();
-  double elapsed_ns = duration_cast<nanoseconds>(end - start).count();
+
+  uint64_t end = now_ns();
+  double elapsed_ns = static_cast<double>(end - start);
   
   // No cleanup needed - pool handles it
   
@@ -151,8 +151,8 @@ BenchResult bench_malloc_fixed(const BenchConfig& config) {
   std::vector<FixedSizeData*> allocations;
   allocations.reserve(config.iterations);
   
-  auto start = high_resolution_clock::now();
-  
+  uint64_t start = now_ns();
+
   for (size_t i = 0; i < config.iterations; i++) {
     FixedSizeData* ptr = static_cast<FixedSizeData*>(malloc(sizeof(FixedSizeData)));
     ptr->timestamp = i;
@@ -160,9 +160,9 @@ BenchResult bench_malloc_fixed(const BenchConfig& config) {
     ptr->volume = 1000 + i;
     allocations.push_back(ptr);
   }
-  
-  auto end = high_resolution_clock::now();
-  double elapsed_ns = duration_cast<nanoseconds>(end - start).count();
+
+  uint64_t end = now_ns();
+  double elapsed_ns = static_cast<double>(end - start);
   
   // Cleanup
   for (FixedSizeData* ptr : allocations) {
@@ -187,8 +187,8 @@ BenchResult bench_pool_fixed(const BenchConfig& config) {
   std::vector<FixedSizeData*> allocations;
   allocations.reserve(config.iterations);
   
-  auto start = high_resolution_clock::now();
-  
+  uint64_t start = now_ns();
+
   for (size_t i = 0; i < config.iterations; i++) {
     FixedSizeData* ptr = pool.construct<FixedSizeData>();
     ptr->timestamp = i;
@@ -196,9 +196,9 @@ BenchResult bench_pool_fixed(const BenchConfig& config) {
     ptr->volume = 1000 + i;
     allocations.push_back(ptr);
   }
-  
-  auto end = high_resolution_clock::now();
-  double elapsed_ns = duration_cast<nanoseconds>(end - start).count();
+
+  uint64_t end = now_ns();
+  double elapsed_ns = static_cast<double>(end - start);
   
   // No cleanup needed
   
@@ -229,19 +229,19 @@ BenchResult bench_malloc_multithreaded(const BenchConfig& config) {
   std::vector<std::thread> threads;
   
   size_t ops_per_thread = config.iterations / config.num_threads;
-  
-  auto start = high_resolution_clock::now();
-  
+
+  uint64_t start = now_ns();
+
   for (size_t i = 0; i < config.num_threads; i++) {
     threads.emplace_back(thread_bench_malloc, ops_per_thread, std::ref(total_ops));
   }
-  
+
   for (auto& t : threads) {
     t.join();
   }
-  
-  auto end = high_resolution_clock::now();
-  double elapsed_ns = duration_cast<nanoseconds>(end - start).count();
+
+  uint64_t end = now_ns();
+  double elapsed_ns = static_cast<double>(end - start);
   
   size_t actual_iterations = total_ops.load();
   
@@ -274,22 +274,22 @@ BenchResult bench_pool_multithreaded(const BenchConfig& config) {
   std::vector<std::thread> threads;
   
   size_t ops_per_thread = config.iterations / config.num_threads;
-  
-  auto start = high_resolution_clock::now();
-  
+
+  uint64_t start = now_ns();
+
   for (size_t i = 0; i < config.num_threads; i++) {
     threads.emplace_back(thread_bench_pool, ops_per_thread, std::ref(total_ops));
   }
-  
+
   for (auto& t : threads) {
     t.join();
   }
-  
-  auto end = high_resolution_clock::now();
-  double elapsed_ns = duration_cast<nanoseconds>(end - start).count();
-  
+
+  uint64_t end = now_ns();
+  double elapsed_ns = static_cast<double>(end - start);
+
   size_t actual_iterations = total_ops.load();
-  
+
   BenchResult result;
   result.name = "ThreadLocalPool (multi-threaded, " + std::to_string(config.num_threads) + " threads)";
   result.iterations = actual_iterations;

@@ -5,9 +5,8 @@
 #include <random>
 #include <vector>
 
+#include "common.hpp"
 #include "thread_local_pool.hpp"
-
-using namespace std::chrono;
 
 // Benchmark configuration
 struct BenchmarkConfig {
@@ -43,11 +42,11 @@ double benchmark_malloc(const BenchmarkConfig& config) {
   }
   
   // Benchmark
-  auto start = high_resolution_clock::now();
-  
+  uint64_t start = now_ns();
+
   std::vector<void*> ptrs;
   ptrs.reserve(config.num_allocations);
-  
+
   for (size_t size : sizes) {
     void* ptr = std::malloc(size);
     if (ptr) {
@@ -56,15 +55,14 @@ double benchmark_malloc(const BenchmarkConfig& config) {
       std::memset(ptr, 0, size);
     }
   }
-  
+
   for (void* ptr : ptrs) {
     std::free(ptr);
   }
-  
-  auto end = high_resolution_clock::now();
-  
-  return duration_cast<nanoseconds>(end - start).count() / 
-         static_cast<double>(config.num_allocations);
+
+  uint64_t end = now_ns();
+
+  return (end - start) / static_cast<double>(config.num_allocations);
 }
 
 /**
@@ -81,13 +79,13 @@ double benchmark_pool(const BenchmarkConfig& config) {
   }
   
   ThreadLocalPool pool;
-  
+
   // Benchmark
-  auto start = high_resolution_clock::now();
-  
+  uint64_t start = now_ns();
+
   std::vector<void*> ptrs;
   ptrs.reserve(config.num_allocations);
-  
+
   for (size_t size : sizes) {
     void* ptr = pool.allocate(size);
     if (ptr) {
@@ -96,14 +94,13 @@ double benchmark_pool(const BenchmarkConfig& config) {
       std::memset(ptr, 0, size);
     }
   }
-  
+
   // Note: No individual deallocation needed
   // pool.reset() would reclaim all memory
-  
-  auto end = high_resolution_clock::now();
-  
-  return duration_cast<nanoseconds>(end - start).count() / 
-         static_cast<double>(config.num_allocations);
+
+  uint64_t end = now_ns();
+
+  return (end - start) / static_cast<double>(config.num_allocations);
 }
 
 /**
@@ -126,52 +123,52 @@ BenchmarkResults benchmark_string_allocations(const BenchmarkConfig& config) {
   }
   
   // Benchmark malloc
-  auto start_malloc = high_resolution_clock::now();
-  
+  uint64_t start_malloc = now_ns();
+
   std::vector<char*> malloc_ptrs;
   malloc_ptrs.reserve(symbols.size());
-  
+
   for (const auto& sym : symbols) {
     char* copy = static_cast<char*>(std::malloc(sym.size() + 1));
     std::strcpy(copy, sym.c_str());
     malloc_ptrs.push_back(copy);
   }
-  
+
   // Access strings (simulate use)
   volatile size_t total_len = 0;
   for (char* ptr : malloc_ptrs) {
     total_len += std::strlen(ptr);
   }
-  
+
   for (char* ptr : malloc_ptrs) {
     std::free(ptr);
   }
-  
-  auto end_malloc = high_resolution_clock::now();
-  double malloc_time = duration_cast<nanoseconds>(end_malloc - start_malloc).count();
-  
+
+  uint64_t end_malloc = now_ns();
+  double malloc_time = static_cast<double>(end_malloc - start_malloc);
+
   // Benchmark pool
   ThreadLocalPool pool;
-  auto start_pool = high_resolution_clock::now();
-  
+  uint64_t start_pool = now_ns();
+
   std::vector<char*> pool_ptrs;
   pool_ptrs.reserve(symbols.size());
-  
+
   for (const auto& sym : symbols) {
     char* copy = pool.allocate_string(sym.c_str(), sym.size());
     pool_ptrs.push_back(copy);
   }
-  
+
   // Access strings (simulate use)
   total_len = 0;
   for (char* ptr : pool_ptrs) {
     total_len += std::strlen(ptr);
   }
-  
+
   // Note: No individual deallocation needed
-  
-  auto end_pool = high_resolution_clock::now();
-  double pool_time = duration_cast<nanoseconds>(end_pool - start_pool).count();
+
+  uint64_t end_pool = now_ns();
+  double pool_time = static_cast<double>(end_pool - start_pool);
   
   BenchmarkResults results;
   results.pool_time_ns = pool_time / config.num_allocations;

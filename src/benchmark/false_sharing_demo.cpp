@@ -7,8 +7,6 @@
 
 #include "common.hpp"
 
-using namespace std::chrono;
-
 // Cache line size (typically 64 bytes on modern CPUs)
 constexpr size_t CACHE_LINE_SIZE = 64;
 
@@ -67,7 +65,7 @@ double benchmark_packed(size_t iterations, int num_threads) {
   PackedCounters counters;
   std::vector<std::thread> threads;
 
-  auto start = high_resolution_clock::now();
+  uint64_t start = now_ms();
 
   // Thread 0 -> counter1, Thread 1 -> counter2, etc.
   threads.emplace_back(increment_packed, std::ref(counters.counter1), iterations);
@@ -82,7 +80,7 @@ double benchmark_packed(size_t iterations, int num_threads) {
     t.join();
   }
 
-  auto end = high_resolution_clock::now();
+  uint64_t end = now_ms();
 
   // Verify
   uint64_t expected = iterations * threads.size();
@@ -92,14 +90,14 @@ double benchmark_packed(size_t iterations, int num_threads) {
     LOG_ERROR("FalseSharing", "Expected %lu, got %lu", expected, actual);
   }
 
-  return duration_cast<milliseconds>(end - start).count();
+  return static_cast<double>(end - start);
 }
 
 double benchmark_padded(size_t iterations, int num_threads) {
   PaddedCounters counters;
   std::vector<std::thread> threads;
 
-  auto start = high_resolution_clock::now();
+  uint64_t start = now_ms();
 
   threads.emplace_back(increment_padded, std::ref(counters.counter1), iterations);
   if (num_threads > 1)
@@ -113,7 +111,7 @@ double benchmark_padded(size_t iterations, int num_threads) {
     t.join();
   }
 
-  auto end = high_resolution_clock::now();
+  uint64_t end = now_ms();
 
   // Verify
   uint64_t expected = iterations * threads.size();
@@ -123,7 +121,7 @@ double benchmark_padded(size_t iterations, int num_threads) {
     LOG_ERROR("FalseSharing", "Expected %lu, got %lu", expected, actual);
   }
 
-  return duration_cast<milliseconds>(end - start).count();
+  return static_cast<double>(end - start);
 }
 
 //=============================================================================
