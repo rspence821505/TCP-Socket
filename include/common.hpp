@@ -290,6 +290,57 @@ public:
     std::cout << "  Max:   " << max_val / 1000.0 << " us" << std::endl;
   }
 
+  // Print with indentation (for nested output)
+  void print_indented(const std::string &name) const {
+    if (latencies_.empty())
+      return;
+
+    std::vector<uint64_t> sorted = latencies_;
+    std::sort(sorted.begin(), sorted.end());
+
+    uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
+    double mean_val = static_cast<double>(sum) / sorted.size();
+    uint64_t p50 = sorted[sorted.size() * 50 / 100];
+    uint64_t p95 = sorted[sorted.size() * 95 / 100];
+    uint64_t p99 = sorted[sorted.size() * 99 / 100];
+    uint64_t max_val = sorted.back();
+
+    std::cout << "  " << name << ":" << std::endl;
+    std::cout << "    Mean: " << mean_val << " ns (" << mean_val / 1000.0
+              << " µs)" << std::endl;
+    std::cout << "    p50:  " << p50 << " ns (" << p50 / 1000.0 << " µs)"
+              << std::endl;
+    std::cout << "    p95:  " << p95 << " ns (" << p95 / 1000.0 << " µs)"
+              << std::endl;
+    std::cout << "    p99:  " << p99 << " ns (" << p99 / 1000.0 << " µs)"
+              << std::endl;
+    std::cout << "    Max:  " << max_val << " ns (" << max_val / 1000.0
+              << " µs)" << std::endl;
+  }
+
+  // CSV output: name,mean,p50,p95,p99,max (all in µs)
+  void print_csv(const std::string &name) const {
+    if (latencies_.empty())
+      return;
+
+    std::vector<uint64_t> sorted = latencies_;
+    std::sort(sorted.begin(), sorted.end());
+
+    uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
+    double mean_val = static_cast<double>(sum) / sorted.size();
+    uint64_t p50 = sorted[sorted.size() * 50 / 100];
+    uint64_t p95 = sorted[sorted.size() * 95 / 100];
+    uint64_t p99 = sorted[sorted.size() * 99 / 100];
+    uint64_t max_val = sorted.back();
+
+    std::cout << name << "," << mean_val / 1000.0 << "," << p50 / 1000.0 << ","
+              << p95 / 1000.0 << "," << p99 / 1000.0 << "," << max_val / 1000.0
+              << std::endl;
+  }
+
+  // Access raw data for custom processing
+  const std::vector<uint64_t> &data() const { return latencies_; }
+
 private:
   std::vector<uint64_t> latencies_;
 };

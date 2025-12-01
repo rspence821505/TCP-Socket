@@ -110,52 +110,8 @@ struct Tick {
   }
 };
 
-//=============================================================================
-// Statistics Collector
-//=============================================================================
-
-class LatencyStats {
-public:
-  void reserve(size_t n) { latencies_.reserve(n); }
-  void add(uint64_t latency_ns) { latencies_.push_back(latency_ns); }
-  size_t count() const { return latencies_.size(); }
-
-  void print(const std::string& name) const {
-    if (latencies_.empty()) {
-      std::cout << name << ": No data" << std::endl;
-      return;
-    }
-
-    std::vector<uint64_t> sorted = latencies_;
-    std::sort(sorted.begin(), sorted.end());
-
-    uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
-    double mean = static_cast<double>(sum) / sorted.size();
-    uint64_t p50 = sorted[sorted.size() * 50 / 100];
-    uint64_t p95 = sorted[sorted.size() * 95 / 100];
-    uint64_t p99 = sorted[sorted.size() * 99 / 100];
-    uint64_t max_val = sorted.back();
-
-    std::cout << name << ":\n"
-              << "  Count: " << sorted.size() << "\n"
-              << "  Mean:  " << mean / 1000.0 << " us\n"
-              << "  p50:   " << p50 / 1000.0 << " us\n"
-              << "  p95:   " << p95 / 1000.0 << " us\n"
-              << "  p99:   " << p99 / 1000.0 << " us\n"
-              << "  Max:   " << max_val / 1000.0 << " us" << std::endl;
-  }
-
-  double percentile(double p) const {
-    if (latencies_.empty()) return 0.0;
-    std::vector<uint64_t> sorted = latencies_;
-    std::sort(sorted.begin(), sorted.end());
-    size_t idx = static_cast<size_t>(sorted.size() * p / 100.0);
-    return sorted[std::min(idx, sorted.size() - 1)] / 1000.0;
-  }
-
-private:
-  std::vector<uint64_t> latencies_;
-};
+// Use LatencyStats from common.hpp
+using ::LatencyStats;
 
 //=============================================================================
 // Connection Manager

@@ -51,9 +51,9 @@ public:
 
       if (bytes_read <= 0) {
         if (bytes_read == 0) {
-          std::cout << "[Reader] Server closed connection" << std::endl;
+          LOG_INFO("Reader", "Server closed connection");
         } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
-          perror("[Reader] recv");
+          LOG_PERROR("Reader", "recv");
         }
         should_stop_ = true;
         break;
@@ -61,7 +61,7 @@ public:
 
       // Add received data to line buffer
       if (!line_buffer_.append(recv_buffer, bytes_read)) {
-        std::cerr << "[Reader] Buffer overflow!" << std::endl;
+        LOG_ERROR("Reader", "Buffer overflow!");
         line_buffer_.reset();
         continue;
       }
@@ -96,8 +96,7 @@ public:
       }
     }
 
-    std::cout << "[Reader] Exiting. Parsed: " << messages_parsed_
-              << ", Errors: " << parse_errors_ << std::endl;
+    LOG_INFO("Reader", "Exiting. Parsed: %lu, Errors: %lu", messages_parsed_, parse_errors_);
   }
 
   uint64_t messages_parsed() const { return messages_parsed_; }
@@ -138,16 +137,15 @@ public:
 
         // Print progress every 100k messages
         if (messages_processed_ % 100000 == 0) {
-          std::cout << "[Processor] Processed: " << messages_processed_
-                    << " | Last: " << tick.tick.symbol
-                    << " @ " << tick.tick.price << std::endl;
+          LOG_INFO("Processor", "Processed: %lu | Last: %s @ %.2f",
+                   messages_processed_, tick.tick.symbol, tick.tick.price);
         }
       } else {
         std::this_thread::yield();
       }
     }
 
-    std::cout << "[Processor] Exiting. Processed: " << messages_processed_ << std::endl;
+    LOG_INFO("Processor", "Exiting. Processed: %lu", messages_processed_);
   }
 
   void print_stats() const {
@@ -169,7 +167,7 @@ private:
 int connect_to_server(const char* host, int port) {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    perror("socket");
+    LOG_PERROR("Connect", "socket");
     return -1;
   }
 
@@ -191,25 +189,23 @@ int connect_to_server(const char* host, int port) {
     server_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   }
 
-  std::cout << "Connecting to " << host << ":" << port << "..." << std::endl;
+  LOG_INFO("Connect", "Connecting to %s:%d...", host, port);
 
   if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-    perror("connect");
+    LOG_PERROR("Connect", "connect");
     close(sockfd);
     return -1;
   }
 
-  std::cout << "Connected!" << std::endl;
+  LOG_INFO("Connect", "Connected!");
   return sockfd;
 }
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <port> [host]" << std::endl;
-    std::cerr << std::endl;
-    std::cerr << "Example: " << argv[0] << " 9999 127.0.0.1" << std::endl;
-    std::cerr << std::endl;
-    std::cerr << "Receives text ticks in format: timestamp symbol price volume\\n" << std::endl;
+    LOG_ERROR("Main", "Usage: %s <port> [host]", argv[0]);
+    LOG_ERROR("Main", "Example: %s 9999 127.0.0.1", argv[0]);
+    LOG_ERROR("Main", "Receives text ticks in format: timestamp symbol price volume\\n");
     return 1;
   }
 

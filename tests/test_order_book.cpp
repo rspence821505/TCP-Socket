@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <vector>
 
+#include "common.hpp"
 #include "order_book.hpp"
 
 // Test fixture for OrderBook tests
@@ -304,7 +305,7 @@ TEST_F(OrderBookTest, BidAskSpread) {
 TEST_F(OrderBookTest, UpdateThroughput) {
   constexpr size_t NUM_UPDATES = 100000;
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_UPDATES; ++i) {
     float price = 100.0f + (i % 100) * 0.01f;
@@ -313,8 +314,8 @@ TEST_F(OrderBookTest, UpdateThroughput) {
     book_.apply_update(side, price, qty);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double updates_per_sec = (static_cast<double>(NUM_UPDATES) / duration_us) * 1000000.0;
   std::cout << "  Order book update throughput: " << static_cast<size_t>(updates_per_sec) << " updates/sec" << std::endl;
@@ -336,14 +337,14 @@ TEST_F(OrderBookTest, SnapshotLoadThroughput) {
     asks.push_back({100.01f + i * 0.01f, static_cast<uint64_t>(800 + i * 100)});
   }
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_SNAPSHOTS; ++i) {
     book_.load_snapshot(bids, asks);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double snapshots_per_sec = (static_cast<double>(NUM_SNAPSHOTS) / duration_us) * 1000000.0;
   std::cout << "  Snapshot load throughput: " << static_cast<size_t>(snapshots_per_sec) << " snapshots/sec" << std::endl;

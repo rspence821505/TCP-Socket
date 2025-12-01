@@ -5,6 +5,8 @@
 #include <thread>
 #include <vector>
 
+#include "common.hpp"
+
 using namespace std::chrono;
 
 // Cache line size (typically 64 bytes on modern CPUs)
@@ -87,7 +89,7 @@ double benchmark_packed(size_t iterations, int num_threads) {
   uint64_t actual = counters.counter1 + counters.counter2 +
                     counters.counter3 + counters.counter4;
   if (actual != expected) {
-    std::cerr << "ERROR: Expected " << expected << ", got " << actual << "\n";
+    LOG_ERROR("FalseSharing", "Expected %lu, got %lu", expected, actual);
   }
 
   return duration_cast<milliseconds>(end - start).count();
@@ -118,7 +120,7 @@ double benchmark_padded(size_t iterations, int num_threads) {
   uint64_t actual = counters.counter1.value + counters.counter2.value +
                     counters.counter3.value + counters.counter4.value;
   if (actual != expected) {
-    std::cerr << "ERROR: Expected " << expected << ", got " << actual << "\n";
+    LOG_ERROR("FalseSharing", "Expected %lu, got %lu", expected, actual);
   }
 
   return duration_cast<milliseconds>(end - start).count();

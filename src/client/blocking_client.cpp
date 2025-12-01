@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <vector>
 
+#include "common.hpp"
+
 struct Connection {
   int sockfd;
   int port;
@@ -44,7 +46,7 @@ int connect_to_exchange(int port) {
   // Create socket
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    perror("socket creation failed");
+    LOG_PERROR("Client", "socket creation failed");
     return -1;
   }
 
@@ -58,7 +60,7 @@ int connect_to_exchange(int port) {
   // Connect to server
   if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
       0) {
-    perror("connection failed");
+    LOG_PERROR("Client", "connection failed");
     close(sockfd);
     return -1;
   }
@@ -66,12 +68,12 @@ int connect_to_exchange(int port) {
   // Set non-blocking mode
   int flags = fcntl(sockfd, F_GETFL, 0);
   if (flags == -1) {
-    perror("fcntl F_GETFL failed");
+    LOG_PERROR("Client", "fcntl F_GETFL failed");
     close(sockfd);
     return -1;
   }
   if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    perror("fcntl F_SETFL failed");
+    LOG_PERROR("Client", "fcntl F_SETFL failed");
     close(sockfd);
     return -1;
   }
@@ -89,12 +91,11 @@ bool drain_socket(Connection &conn) { // Changed from void to bool
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         break; // No more data
       } else {
-        perror("recv failed");
+        LOG_PERROR("Client", "recv failed");
         return false; // Connection error
       }
     } else if (bytes_read == 0) {
-      std::cout << "Exchange " << conn.port << " closed connection"
-                << std::endl;
+      LOG_INFO("Client", "Exchange %d closed connection", conn.port);
       return false; // Connection closed
     } else {
       conn.buffer.append(temp, bytes_read);
@@ -114,7 +115,7 @@ int main() {
   // Create kqueue
   int kq = kqueue();
   if (kq == -1) {
-    perror("kqueue creation failed");
+    LOG_PERROR("Client", "kqueue creation failed");
     return 1;
   }
 
@@ -132,7 +133,7 @@ int main() {
     struct kevent ev_set;
     EV_SET(&ev_set, sockfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
     if (kevent(kq, &ev_set, 1, NULL, 0, NULL) == -1) {
-      perror("kevent registration failed");
+      LOG_PERROR("Client", "kevent registration failed");
       close(sockfd);
       continue;
     }
@@ -142,7 +143,7 @@ int main() {
   }
 
   if (connections.empty()) {
-    std::cerr << "Failed to connect to any exchanges" << std::endl;
+    LOG_ERROR("Client", "Failed to connect to any exchanges");
     return 1;
   }
 
@@ -158,7 +159,7 @@ int main() {
 
     int nev = kevent(kq, NULL, 0, ev_list, 10, NULL);
     if (nev == -1) {
-      perror("kevent wait failed");
+      LOG_PERROR("Client", "kevent wait failed");
       break;
     }
 

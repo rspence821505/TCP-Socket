@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 #include "connection_manager.hpp"
 #include "order_book.hpp"
 #include "ring_buffer.hpp"
@@ -47,16 +48,13 @@ public:
   }
 
   void run() {
-    std::cout << "=== Snapshot Recovery Feed Handler ===" << std::endl;
-    std::cout << "Symbol: " << symbol_.substr(0, 4) << std::endl;
-    std::cout << "State Machine: CONNECTING → SNAPSHOT_REQUEST → "
-                 "SNAPSHOT_REPLAY → INCREMENTAL"
-              << std::endl;
-    std::cout << std::endl;
+    LOG_INFO("FeedHandler", "=== Snapshot Recovery Feed Handler ===");
+    LOG_INFO("FeedHandler", "Symbol: %s", symbol_.substr(0, 4).c_str());
+    LOG_INFO("FeedHandler", "State Machine: CONNECTING -> SNAPSHOT_REQUEST -> SNAPSHOT_REPLAY -> INCREMENTAL");
 
     // Initial connection
     if (!conn_manager_.connect()) {
-      std::cerr << "Failed to connect to exchange" << std::endl;
+      LOG_ERROR("FeedHandler", "Failed to connect to exchange");
       return;
     }
 
@@ -67,9 +65,8 @@ public:
     while (!should_stop_) {
       // Check for heartbeat timeout
       if (conn_manager_.is_heartbeat_timeout()) {
-        std::cout << "[FeedHandler] ⚠️  Heartbeat timeout detected ("
-                  << conn_manager_.seconds_since_last_message()
-                  << "s since last message)" << std::endl;
+        LOG_WARN("FeedHandler", "Heartbeat timeout detected (%ds since last message)",
+                 conn_manager_.seconds_since_last_message());
 
         // Attempt reconnection
         if (conn_manager_.reconnect()) {
@@ -77,8 +74,7 @@ public:
           sequence_tracker_.reset();
           conn_manager_.transition_to_snapshot_request(); // Need new snapshot
         } else {
-          std::cerr << "[FeedHandler] Reconnection failed, retrying..."
-                    << std::endl;
+          LOG_ERROR("FeedHandler", "Reconnection failed, retrying...");
           continue;
         }
       }
@@ -91,7 +87,7 @@ public:
       // Read and process messages
       if (!read_and_process()) {
         // Connection closed by server
-        std::cout << "[FeedHandler] Connection closed by server" << std::endl;
+        LOG_INFO("FeedHandler", "Connection closed by server");
 
         if (!should_stop_) {
           // Try to reconnect
@@ -116,8 +112,7 @@ public:
 
 private:
   void send_snapshot_request() {
-    std::cout << "[FeedHandler] 📤 Sending snapshot request for symbol: "
-              << symbol_.substr(0, 4) << std::endl;
+    LOG_INFO("FeedHandler", "Sending snapshot request for symbol: %s", symbol_.substr(0, 4).c_str());
 
     std::string request =
         serialize_snapshot_request(client_sequence_++, symbol_.data());
@@ -125,12 +120,12 @@ private:
     ssize_t bytes_sent =
         send(conn_manager_.sockfd(), request.data(), request.length(), 0);
     if (bytes_sent < 0) {
-      perror("[FeedHandler] Failed to send snapshot request");
+      LOG_PERROR("FeedHandler", "Failed to send snapshot request");
       return;
     }
 
     conn_manager_.mark_snapshot_requested();
-    std::cout << "[FeedHandler] Waiting for snapshot response..." << std::endl;
+    LOG_INFO("FeedHandler", "Waiting for snapshot response...");
   }
 
   bool read_and_process() {
@@ -138,7 +133,7 @@ private:
     auto [write_ptr, write_space] = buffer_.get_write_ptr();
 
     if (write_space == 0) {
-      std::cerr << "[FeedHandler] Ring buffer full!" << std::endl;
+      LOG_ERROR("FeedHandler", "Ring buffer full!");
       return false;
     }
 
@@ -151,7 +146,7 @@ private:
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         return true;
       } else {
-        perror("[FeedHandler] recv failed");
+        LOG_PERROR("FeedHandler", "recv failed");
         return false;
       }
     } else if (bytes_read == 0) {
@@ -221,8 +216,7 @@ private:
         process_order_book_update(header, payload);
         break;
       default:
-        std::cerr << "[FeedHandler] Unknown message type: "
-                  << static_cast<int>(header.type) << std::endl;
+        LOG_ERROR("FeedHandler", "Unknown message type: %d", static_cast<int>(header.type));
       }
     }
   }
@@ -240,8 +234,7 @@ private:
         symbol = symbol.substr(0, null_pos);
       }
 
-      std::cout << "[Tick seq=" << header.sequence << "] [" << symbol << "] $"
-                << tick.price << " @ " << tick.volume << std::endl;
+      LOG_INFO("Tick", "seq=%lu [%s] $%.2f @ %d", header.sequence, symbol.c_str(), tick.price, tick.volume);
     }
   }
 
@@ -250,9 +243,8 @@ private:
 
     stats_.heartbeats_received++;
 
-    std::cout << "[Heartbeat seq=" << header.sequence
-              << "] timestamp=" << heartbeat.timestamp
-              << " | State: " << conn_manager_.state_name() << std::endl;
+    LOG_INFO("Heartbeat", "seq=%lu timestamp=%lu | State: %s",
+             header.sequence, heartbeat.timestamp, conn_manager_.state_name());
   }
 
   void process_snapshot_response(const MessageHeader &header,
@@ -270,10 +262,9 @@ private:
       symbol_str = symbol_str.substr(0, null_pos);
     }
 
-    std::cout << "[Snapshot seq=" << header.sequence
-              << "] Received snapshot for " << symbol_str << std::endl;
-    std::cout << "  Bid levels: " << bids.size() << std::endl;
-    std::cout << "  Ask levels: " << asks.size() << std::endl;
+    LOG_INFO("Snapshot", "seq=%lu Received snapshot for %s", header.sequence, symbol_str.c_str());
+    LOG_INFO("Snapshot", "  Bid levels: %zu", bids.size());
+    LOG_INFO("Snapshot", "  Ask levels: %zu", asks.size());
 
     // Load snapshot into order book
     order_book_.load_snapshot(bids, asks);
@@ -294,9 +285,7 @@ private:
     if (!conn_manager_.is_incremental_mode()) {
       // Buffer updates during snapshot replay (in production, you'd queue
       // these)
-      std::cout << "[FeedHandler] ⚠️  Ignoring incremental update (not in "
-                   "INCREMENTAL mode yet)"
-                << std::endl;
+      LOG_WARN("FeedHandler", "Ignoring incremental update (not in INCREMENTAL mode yet)");
       return;
     }
 

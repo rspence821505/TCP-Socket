@@ -14,59 +14,9 @@
 #include "common.hpp"
 #include "socket_config.hpp"
 
-// Benchmark-specific latency statistics with CSV output
-struct BenchmarkLatencyStats {
-  std::vector<uint64_t> latencies_ns;
-
-  void reserve(size_t n) { latencies_ns.reserve(n); }
-
-  void add(uint64_t latency_ns) { latencies_ns.push_back(latency_ns); }
-
-  void compute_and_print(const std::string &label) const {
-    if (latencies_ns.empty()) {
-      std::cout << label << ": No data" << std::endl;
-      return;
-    }
-
-    std::vector<uint64_t> sorted = latencies_ns;
-    std::sort(sorted.begin(), sorted.end());
-
-    uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
-    double mean_ns = static_cast<double>(sum) / sorted.size();
-
-    uint64_t p50 = sorted[sorted.size() * 50 / 100];
-    uint64_t p95 = sorted[sorted.size() * 95 / 100];
-    uint64_t p99 = sorted[sorted.size() * 99 / 100];
-    uint64_t max = sorted.back();
-
-    std::cout << label << ":" << std::endl;
-    std::cout << "  Mean: " << mean_ns / 1000.0 << " µs" << std::endl;
-    std::cout << "  p50:  " << p50 / 1000.0 << " µs" << std::endl;
-    std::cout << "  p95:  " << p95 / 1000.0 << " µs" << std::endl;
-    std::cout << "  p99:  " << p99 / 1000.0 << " µs" << std::endl;
-    std::cout << "  Max:  " << max / 1000.0 << " µs" << std::endl;
-  }
-
-  // CSV output for easy comparison
-  void print_csv_line(const std::string &config_name) const {
-    if (latencies_ns.empty())
-      return;
-
-    std::vector<uint64_t> sorted = latencies_ns;
-    std::sort(sorted.begin(), sorted.end());
-
-    uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
-    double mean_ns = static_cast<double>(sum) / sorted.size();
-    uint64_t p50 = sorted[sorted.size() * 50 / 100];
-    uint64_t p95 = sorted[sorted.size() * 95 / 100];
-    uint64_t p99 = sorted[sorted.size() * 99 / 100];
-    uint64_t max = sorted.back();
-
-    std::cout << config_name << "," << mean_ns / 1000.0 << "," << p50 / 1000.0
-              << "," << p95 / 1000.0 << "," << p99 / 1000.0 << ","
-              << max / 1000.0 << std::endl;
-  }
-};
+// Use consolidated LatencyStats from common.hpp
+// Alias for backward compatibility
+using BenchmarkLatencyStats = LatencyStats;
 
 // Connect to server with specific socket configuration
 int connect_with_config(const std::string &host, int port,
@@ -74,7 +24,7 @@ int connect_with_config(const std::string &host, int port,
   // 1. Create socket
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    perror("socket creation failed");
+    LOG_PERROR("Benchmark", "socket creation failed");
     return -1;
   }
 
@@ -95,7 +45,7 @@ int connect_with_config(const std::string &host, int port,
   // 4. Connect to server
   if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
       0) {
-    perror("connection failed");
+    LOG_PERROR("Benchmark", "connection failed");
     close(sockfd);
     return -1;
   }
@@ -103,7 +53,7 @@ int connect_with_config(const std::string &host, int port,
   // 5. Set non-blocking mode
   int flags = fcntl(sockfd, F_GETFL, 0);
   if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    perror("fcntl failed");
+    LOG_PERROR("Benchmark", "fcntl failed");
     close(sockfd);
     return -1;
   }
@@ -153,7 +103,7 @@ BenchmarkLatencyStats run_benchmark(const std::string &host, int port,
         // No data available, try again
         continue;
       } else {
-        perror("recv failed");
+        LOG_PERROR("Benchmark", "recv failed");
         break;
       }
     } else if (bytes_read == 0) {
@@ -175,7 +125,7 @@ BenchmarkLatencyStats run_benchmark(const std::string &host, int port,
 
       // Validate length
       if (length != BinaryTick::PAYLOAD_SIZE) {
-        std::cerr << "Invalid message length: " << length << std::endl;
+        LOG_ERROR("Benchmark", "Invalid message length: %u", length);
         close(sockfd);
         return stats;
       }
@@ -283,7 +233,7 @@ int main(int argc, char *argv[]) {
     } else if (arg == "--quiet") {
       verbose = false;
     } else {
-      std::cerr << "Unknown option: " << arg << std::endl;
+      LOG_ERROR("Benchmark", "Unknown option: %s", arg.c_str());
       print_usage(argv[0]);
       return 1;
     }
@@ -303,9 +253,9 @@ int main(int argc, char *argv[]) {
   if (csv_output) {
     // CSV header if this is the first line
     // Format: config,mean,p50,p95,p99,max (all in µs)
-    stats.print_csv_line(config.short_name());
+    stats.print_csv(config.short_name());
   } else {
-    stats.compute_and_print("Latency (recv → processed)");
+    stats.print("Latency (recv → processed)");
   }
 
   return 0;

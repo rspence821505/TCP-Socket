@@ -5,6 +5,7 @@
 #include <random>
 #include <chrono>
 
+#include "common.hpp"
 #include "order_book.hpp"
 #include "spsc_queue.hpp"
 #include "connection_manager.hpp"
@@ -27,7 +28,7 @@ TEST_F(OrderBookStressTest, HighVolumeUpdates) {
   // Test order book under high volume of updates
   constexpr size_t NUM_UPDATES = 500000;
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_UPDATES; ++i) {
     float price = 100.0f + (i % 1000) * 0.01f;  // 1000 price levels
@@ -36,8 +37,8 @@ TEST_F(OrderBookStressTest, HighVolumeUpdates) {
     book_.apply_update(side, price, qty);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double updates_per_sec = (static_cast<double>(NUM_UPDATES) / duration_us) * 1000000.0;
   std::cout << "  High volume update throughput: " << static_cast<size_t>(updates_per_sec) << " updates/sec" << std::endl;
@@ -53,7 +54,7 @@ TEST_F(OrderBookStressTest, ManyPriceLevels) {
   // Test order book with many price levels (stress memory/map operations)
   constexpr size_t NUM_LEVELS = 10000;
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   // Add many bid levels
   for (size_t i = 0; i < NUM_LEVELS; ++i) {
@@ -67,8 +68,8 @@ TEST_F(OrderBookStressTest, ManyPriceLevels) {
     book_.apply_update(1, price, 800 + i);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   EXPECT_EQ(book_.bid_depth(), NUM_LEVELS);
   EXPECT_EQ(book_.ask_depth(), NUM_LEVELS);
@@ -102,7 +103,7 @@ TEST_F(OrderBookStressTest, RapidPriceChanges) {
   std::uniform_int_distribution<int64_t> qty_dist(0, 10000);
   std::uniform_int_distribution<int> side_dist(0, 1);
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_CHANGES; ++i) {
     float price = price_dist(rng);
@@ -111,8 +112,8 @@ TEST_F(OrderBookStressTest, RapidPriceChanges) {
     book_.apply_update(side, price, qty);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double changes_per_sec = (static_cast<double>(NUM_CHANGES) / duration_us) * 1000000.0;
   std::cout << "  Rapid price change throughput: " << static_cast<size_t>(changes_per_sec) << " changes/sec" << std::endl;
@@ -136,14 +137,14 @@ TEST_F(OrderBookStressTest, LargeSnapshotLoad) {
     asks.push_back({100.01f + i * 0.01f, static_cast<uint64_t>(800 + i)});
   }
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_SNAPSHOTS; ++i) {
     book_.load_snapshot(bids, asks);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double snapshots_per_sec = (static_cast<double>(NUM_SNAPSHOTS) / duration_us) * 1000000.0;
   std::cout << "  Large snapshot load: " << static_cast<size_t>(snapshots_per_sec)
@@ -160,15 +161,15 @@ TEST_F(OrderBookStressTest, ClearAndReloadStress) {
   std::vector<OrderBookLevel> bids = {{100.0f, 1000}, {99.99f, 2000}};
   std::vector<OrderBookLevel> asks = {{100.01f, 800}, {100.02f, 1500}};
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_CYCLES; ++i) {
     book_.load_snapshot(bids, asks);
     book_.clear();
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   std::cout << "  Clear/reload cycles: " << NUM_CYCLES << " in " << duration_us << " us" << std::endl;
 
@@ -279,13 +280,13 @@ TEST_F(QueueBackpressureTest, BackpressureLatencyMeasurement) {
   SPSCQueue<uint64_t> queue(1024);
 
   // Measure push latency on empty queue
-  auto start_empty = std::chrono::high_resolution_clock::now();
+  uint64_t start_empty = now_ns();
   for (int i = 0; i < 100; ++i) {
     queue.push(i);
     queue.pop();
   }
-  auto end_empty = std::chrono::high_resolution_clock::now();
-  auto empty_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(end_empty - start_empty).count() / 100;
+  uint64_t end_empty = now_ns();
+  uint64_t empty_latency = (end_empty - start_empty) / 100;
 
   // Fill queue to 90%
   size_t target_fill = queue.capacity() * 9 / 10;
@@ -294,13 +295,13 @@ TEST_F(QueueBackpressureTest, BackpressureLatencyMeasurement) {
   }
 
   // Measure push latency on nearly full queue
-  auto start_full = std::chrono::high_resolution_clock::now();
+  uint64_t start_full = now_ns();
   for (int i = 0; i < 100; ++i) {
     queue.push(i);
     queue.pop();
   }
-  auto end_full = std::chrono::high_resolution_clock::now();
-  auto full_latency = std::chrono::duration_cast<std::chrono::nanoseconds>(end_full - start_full).count() / 100;
+  uint64_t end_full = now_ns();
+  uint64_t full_latency = (end_full - start_full) / 100;
 
   std::cout << "  Empty queue push/pop latency: " << empty_latency << " ns" << std::endl;
   std::cout << "  Near-full queue push/pop latency: " << full_latency << " ns" << std::endl;
@@ -495,13 +496,13 @@ TEST_F(IntegrationStressTest, ProducerConsumerWithOrderBook) {
     }
   });
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   producer.join();
   consumer.join();
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double throughput = (static_cast<double>(NUM_UPDATES) / duration_us) * 1000000.0;
 
@@ -526,7 +527,7 @@ TEST_F(IntegrationStressTest, MultipleSnapshotsWithUpdates) {
   constexpr size_t NUM_CYCLES = 100;
   constexpr size_t UPDATES_PER_CYCLE = 1000;
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_ms();
 
   for (size_t cycle = 0; cycle < NUM_CYCLES; ++cycle) {
     // Load snapshot
@@ -544,8 +545,8 @@ TEST_F(IntegrationStressTest, MultipleSnapshotsWithUpdates) {
     EXPECT_GT(book.bid_depth() + book.ask_depth(), 0);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+  uint64_t end = now_ms();
+  uint64_t duration_ms = end - start;
 
   std::cout << "  Snapshot+update cycles: " << NUM_CYCLES << " in " << duration_ms << " ms" << std::endl;
 

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 #include "udp_protocol.hpp"
 
 volatile sig_atomic_t keep_running = 1;
@@ -59,76 +60,76 @@ public:
     // Create UDP socket
     udp_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_fd_ < 0) {
-      perror("UDP socket creation failed");
+      LOG_PERROR("Server", "UDP socket creation failed");
       return false;
     }
-    
+
     // Create TCP control socket
     tcp_control_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (tcp_control_fd_ < 0) {
-      perror("TCP socket creation failed");
+      LOG_PERROR("Server", "TCP socket creation failed");
       close(udp_fd_);
       return false;
     }
-    
+
     // Set TCP socket to reuse address
     int opt = 1;
     setsockopt(tcp_control_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    
+
     // Bind TCP control socket
     struct sockaddr_in tcp_addr;
     memset(&tcp_addr, 0, sizeof(tcp_addr));
     tcp_addr.sin_family = AF_INET;
     tcp_addr.sin_addr.s_addr = INADDR_ANY;
     tcp_addr.sin_port = htons(tcp_port_);
-    
+
     if (bind(tcp_control_fd_, (struct sockaddr*)&tcp_addr, sizeof(tcp_addr)) < 0) {
-      perror("TCP bind failed");
+      LOG_PERROR("Server", "TCP bind failed");
       close(udp_fd_);
       close(tcp_control_fd_);
       return false;
     }
-    
+
     if (listen(tcp_control_fd_, 5) < 0) {
-      perror("TCP listen failed");
+      LOG_PERROR("Server", "TCP listen failed");
       close(udp_fd_);
       close(tcp_control_fd_);
       return false;
     }
-    
-    std::cout << "📡 UDP Mock Server started" << std::endl;
-    std::cout << "  UDP feed port: " << udp_port_ << std::endl;
-    std::cout << "  TCP control port: " << tcp_port_ << std::endl;
-    std::cout << "  Packet loss rate: " << (loss_config_.loss_rate * 100.0) << "%" << std::endl;
+
+    LOG_INFO("Server", "UDP Mock Server started");
+    LOG_INFO("Server", "  UDP feed port: %d", udp_port_);
+    LOG_INFO("Server", "  TCP control port: %d", tcp_port_);
+    LOG_INFO("Server", "  Packet loss rate: %.1f%%", loss_config_.loss_rate * 100.0);
     if (loss_config_.burst_size > 1) {
-      std::cout << "  Burst loss: " << loss_config_.burst_size << " packets @ " 
-                << (loss_config_.burst_probability * 100.0) << "% probability" << std::endl;
+      LOG_INFO("Server", "  Burst loss: %d packets @ %.1f%% probability",
+               loss_config_.burst_size, loss_config_.burst_probability * 100.0);
     }
-    
+
     return true;
   }
   
   void run() {
     // Start TCP control thread
     std::thread control_thread([this]() { handle_control_connections(); });
-    
+
     // Wait for client to connect to TCP control channel first
-    std::cout << "Waiting for client connection on control channel..." << std::endl;
+    LOG_INFO("Server", "Waiting for client connection on control channel...");
     std::this_thread::sleep_for(std::chrono::seconds(2));
-    
+
     // Run UDP feed
     send_udp_feed();
-    
+
     keep_running = 0;
     control_thread.join();
-    
+
     print_statistics();
   }
   
 private:
   void send_udp_feed() {
-    std::cout << "Starting UDP feed..." << std::endl;
-    
+    LOG_INFO("UDP", "Starting UDP feed...");
+
     // Client address (will be set when client connects to TCP)
     // For simplicity, we'll broadcast to localhost:udp_port
     struct sockaddr_in client_addr;
@@ -136,77 +137,76 @@ private:
     client_addr.sin_family = AF_INET;
     client_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     client_addr.sin_port = htons(udp_port_);
-    
+
     auto start_time = std::chrono::steady_clock::now();
-    
+
     while (keep_running && messages_sent_ < 50000) {
       // Generate tick
       BinaryTick tick = generate_tick();
-      std::string message = serialize_tick(sequence_number_, tick.timestamp, 
+      std::string message = serialize_tick(sequence_number_, tick.timestamp,
                                           tick.symbol, tick.price, tick.volume);
-      
+
       // Cache for retransmits (keep last 10k messages)
       message_cache_[sequence_number_] = message;
       if (message_cache_.size() > 10000) {
         message_cache_.erase(message_cache_.begin());
       }
-      
+
       // Simulate packet loss
       if (should_drop_packet()) {
         packets_dropped_++;
-        
+
         if (messages_sent_ % 1000 == 0) {
-          std::cout << "[UDP] Dropped packet seq=" << sequence_number_ << std::endl;
+          LOG_INFO("UDP", "Dropped packet seq=%lu", sequence_number_);
         }
       } else {
         // Send UDP packet
         ssize_t sent = sendto(udp_fd_, message.data(), message.length(), 0,
                              (struct sockaddr*)&client_addr, sizeof(client_addr));
-        
+
         if (sent < 0) {
-          perror("sendto failed");
+          LOG_PERROR("UDP", "sendto failed");
           break;
         }
       }
-      
+
       sequence_number_++;
       messages_sent_++;
-      
+
       // Throttle to ~10k msgs/sec
       if (messages_sent_ % 100 == 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
     }
-    
+
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end_time - start_time
     );
     double seconds = duration.count() / 1000.0;
-    
-    std::cout << "[UDP] Sent " << messages_sent_ << " messages in " << seconds << "s ("
-              << static_cast<int>(messages_sent_ / seconds) << " msgs/sec)" << std::endl;
+
+    LOG_INFO("UDP", "Sent %lu messages in %.2fs (%d msgs/sec)",
+             messages_sent_, seconds, static_cast<int>(messages_sent_ / seconds));
   }
   
   void handle_control_connections() {
     while (keep_running) {
       struct sockaddr_in client_addr;
       socklen_t client_len = sizeof(client_addr);
-      
+
       int client_fd = accept(tcp_control_fd_, (struct sockaddr*)&client_addr, &client_len);
       if (client_fd < 0) {
         if (keep_running) {
-          perror("accept failed");
+          LOG_PERROR("TCP", "accept failed");
         }
         continue;
       }
-      
-      std::cout << "[TCP Control] Client connected from " 
-                << inet_ntoa(client_addr.sin_addr) << std::endl;
-      
+
+      LOG_INFO("TCP", "Client connected from %s", inet_ntoa(client_addr.sin_addr));
+
       // Handle retransmit requests
       handle_retransmit_requests(client_fd);
-      
+
       close(client_fd);
     }
   }
@@ -232,17 +232,17 @@ private:
         RetransmitRequest request = deserialize_retransmit_request(
           buffer + MessageHeader::HEADER_SIZE
         );
-        
-        std::cout << "[TCP Control] Retransmit request: seq " << request.start_sequence
-                  << " to " << request.end_sequence << std::endl;
-        
+
+        LOG_INFO("TCP", "Retransmit request: seq %lu to %lu",
+                 request.start_sequence, request.end_sequence);
+
         // Send requested messages
         for (uint64_t seq = request.start_sequence; seq <= request.end_sequence; ++seq) {
           auto it = message_cache_.find(seq);
           if (it != message_cache_.end()) {
             ssize_t sent = send(client_fd, it->second.data(), it->second.length(), 0);
             if (sent < 0) {
-              perror("retransmit send failed");
+              LOG_PERROR("TCP", "retransmit send failed");
               return;
             }
             retransmits_sent_++;
@@ -276,7 +276,7 @@ private:
   BinaryTick generate_tick() {
     BinaryTick tick;
     
-    tick.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+    tick.timestamp = now_ns();
     
     std::uniform_int_distribution<size_t> symbol_dist(0, symbols_.size() - 1);
     const std::string& symbol_str = symbols_[symbol_dist(rng_)];
@@ -292,11 +292,11 @@ private:
   }
   
   void print_statistics() {
-    std::cout << "\n=== UDP Server Statistics ===" << std::endl;
-    std::cout << "Messages sent: " << messages_sent_ << std::endl;
-    std::cout << "Packets dropped: " << packets_dropped_ 
-              << " (" << (100.0 * packets_dropped_ / messages_sent_) << "%)" << std::endl;
-    std::cout << "Retransmits sent: " << retransmits_sent_ << std::endl;
+    LOG_INFO("Stats", "=== UDP Server Statistics ===");
+    LOG_INFO("Stats", "Messages sent: %lu", messages_sent_);
+    LOG_INFO("Stats", "Packets dropped: %lu (%.1f%%)",
+             packets_dropped_, 100.0 * packets_dropped_ / messages_sent_);
+    LOG_INFO("Stats", "Retransmits sent: %lu", retransmits_sent_);
   }
 };
 
@@ -326,7 +326,7 @@ int main(int argc, char* argv[]) {
   }
   
   server.run();
-  
-  std::cout << "\nServer shutting down..." << std::endl;
+
+  LOG_INFO("Server", "Server shutting down...");
   return 0;
 }

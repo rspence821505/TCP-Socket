@@ -16,7 +16,7 @@
 int main(int argc, char* argv[]) {
   auto config_opt = CLIParser::parse(argc, argv);
   if (!config_opt) {
-    std::cerr << "\nRun '" << argv[0] << " --help' for usage information.\n";
+    LOG_ERROR("Main", "Run '%s --help' for usage information.", argv[0]);
     return 1;
   }
 
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   }
 
   if (!cli_config.is_valid()) {
-    std::cerr << "Error: --port is required\n\n";
+    LOG_ERROR("Main", "--port is required");
     CLIParser::print_usage(argv[0]);
     return 1;
   }
@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
   net::BookUpdatingFeedHandler handler(feed_config);
 
   if (!handler.start()) {
-    std::cerr << "Error: Failed to start feed handler\n";
+    LOG_ERROR("Main", "Failed to start feed handler");
     return 1;
   }
 

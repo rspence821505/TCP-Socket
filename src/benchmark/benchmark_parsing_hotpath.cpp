@@ -6,8 +6,7 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
-
-using namespace std::chrono;
+#include "common.hpp"
 
 /**
  * Parsing Hot Path Benchmark
@@ -86,7 +85,7 @@ BaselineParsingResult benchmark_baseline_parsing(const BenchmarkData& data) {
   const char* ptr = data.serialized_ticks.data();
   const char* end = ptr + data.serialized_ticks.size();
 
-  auto start = high_resolution_clock::now();
+  uint64_t start = now_ns();
 
   while (ptr + data.tick_size <= end) {
     // Deserialize header
@@ -103,12 +102,12 @@ BaselineParsingResult benchmark_baseline_parsing(const BenchmarkData& data) {
     result.ticks_processed++;
   }
 
-  auto end_time = high_resolution_clock::now();
-  auto duration = duration_cast<nanoseconds>(end_time - start);
+  uint64_t end_time = now_ns();
+  uint64_t duration_ns = end_time - start;
 
-  result.time_ms = duration.count() / 1'000'000.0;
-  result.ticks_per_second = (result.ticks_processed * 1'000'000'000.0) / duration.count();
-  result.ns_per_tick = duration.count() / static_cast<double>(result.ticks_processed);
+  result.time_ms = duration_ns / 1'000'000.0;
+  result.ticks_per_second = (result.ticks_processed * 1'000'000'000.0) / duration_ns;
+  result.ns_per_tick = duration_ns / static_cast<double>(result.ticks_processed);
 
   return result;
 }
@@ -164,7 +163,7 @@ OptimizedParsingResult benchmark_optimized_parsing(const BenchmarkData& data) {
   const char* end = ptr + data.serialized_ticks.size();
   const size_t tick_size = data.tick_size;
 
-  auto start = high_resolution_clock::now();
+  uint64_t start = now_ns();
 
   // Main loop - highly optimized
   while (ptr + tick_size <= end) {
@@ -178,12 +177,12 @@ OptimizedParsingResult benchmark_optimized_parsing(const BenchmarkData& data) {
     result.ticks_processed++;
   }
 
-  auto end_time = high_resolution_clock::now();
-  auto duration = duration_cast<nanoseconds>(end_time - start);
+  uint64_t end_time = now_ns();
+  uint64_t duration_ns = end_time - start;
 
-  result.time_ms = duration.count() / 1'000'000.0;
-  result.ticks_per_second = (result.ticks_processed * 1'000'000'000.0) / duration.count();
-  result.ns_per_tick = duration.count() / static_cast<double>(result.ticks_processed);
+  result.time_ms = duration_ns / 1'000'000.0;
+  result.ticks_per_second = (result.ticks_processed * 1'000'000'000.0) / duration_ns;
+  result.ns_per_tick = duration_ns / static_cast<double>(result.ticks_processed);
 
   return result;
 }

@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "common.hpp"
 #include "text_protocol.hpp"
 
 /**
@@ -45,7 +46,7 @@ public:
   bool start() {
     server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd_ < 0) {
-      perror("socket");
+      LOG_PERROR("Server", "socket");
       return false;
     }
 
@@ -59,26 +60,25 @@ public:
     addr.sin_port = htons(port_);
 
     if (bind(server_fd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-      perror("bind");
+      LOG_PERROR("Server", "bind");
       return false;
     }
 
     if (listen(server_fd_, 5) < 0) {
-      perror("listen");
+      LOG_PERROR("Server", "listen");
       return false;
     }
 
-    std::cout << "Text Mock Server listening on port " << port_ << std::endl;
-    std::cout << "Sending " << msgs_per_sec_ << " msgs/sec for "
-              << duration_sec_ << " seconds" << std::endl;
-    std::cout << "Format: timestamp symbol price volume\\n" << std::endl;
+    LOG_INFO("Server", "Text Mock Server listening on port %d", port_);
+    LOG_INFO("Server", "Sending %d msgs/sec for %d seconds", msgs_per_sec_, duration_sec_);
+    LOG_INFO("Server", "Format: timestamp symbol price volume\\n");
 
     return true;
   }
 
   void run() {
     while (running) {
-      std::cout << "Waiting for connection..." << std::endl;
+      LOG_INFO("Server", "Waiting for connection...");
 
       struct sockaddr_in client_addr;
       socklen_t client_len = sizeof(client_addr);
@@ -86,19 +86,19 @@ public:
 
       if (client_fd < 0) {
         if (running) {
-          perror("accept");
+          LOG_PERROR("Server", "accept");
         }
         continue;
       }
 
       char client_ip[INET_ADDRSTRLEN];
       inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
-      std::cout << "Client connected from " << client_ip << std::endl;
+      LOG_INFO("Server", "Client connected from %s", client_ip);
 
       handle_client(client_fd);
 
       close(client_fd);
-      std::cout << "Client disconnected" << std::endl;
+      LOG_INFO("Server", "Client disconnected");
     }
   }
 
@@ -115,11 +115,7 @@ private:
     auto end_time = start_time + std::chrono::seconds(duration_sec_);
 
     uint64_t messages_sent = 0;
-    uint64_t timestamp = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::system_clock::now().time_since_epoch()
-        ).count()
-    );
+    uint64_t timestamp = now_us();
 
     // Calculate delay between messages
     auto msg_interval = std::chrono::nanoseconds(1'000'000'000 / msgs_per_sec_);
@@ -145,7 +141,7 @@ private:
       // Send batch when buffer is large enough or rate limiting kicks in
       if (batch_buffer.size() >= batch_threshold) {
         if (send(client_fd, batch_buffer.data(), batch_buffer.size(), 0) < 0) {
-          perror("send");
+          LOG_PERROR("Server", "send");
           break;
         }
         batch_buffer.clear();
@@ -163,8 +159,7 @@ private:
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - start_time
         ).count();
-        std::cout << "Sent " << messages_sent << " messages ("
-                  << elapsed << "s elapsed)" << std::endl;
+        LOG_INFO("Server", "Sent %lu messages (%lds elapsed)", messages_sent, elapsed);
       }
     }
 
@@ -177,11 +172,10 @@ private:
         std::chrono::steady_clock::now() - start_time
     ).count();
 
-    std::cout << "\n=== Summary ===" << std::endl;
-    std::cout << "Total messages sent: " << messages_sent << std::endl;
-    std::cout << "Duration: " << elapsed << " ms" << std::endl;
-    std::cout << "Actual rate: "
-              << (messages_sent * 1000.0 / elapsed) << " msgs/sec" << std::endl;
+    LOG_INFO("Server", "=== Summary ===");
+    LOG_INFO("Server", "Total messages sent: %lu", messages_sent);
+    LOG_INFO("Server", "Duration: %ld ms", elapsed);
+    LOG_INFO("Server", "Actual rate: %.1f msgs/sec", messages_sent * 1000.0 / elapsed);
   }
 
   int port_;
@@ -193,13 +187,11 @@ private:
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <port> [msgs_per_sec] [duration_sec]" << std::endl;
-    std::cerr << std::endl;
-    std::cerr << "Example: " << argv[0] << " 9999 10000 10" << std::endl;
-    std::cerr << "  Sends 10,000 text ticks/sec for 10 seconds" << std::endl;
-    std::cerr << std::endl;
-    std::cerr << "Message format: timestamp symbol price volume\\n" << std::endl;
-    std::cerr << "Example tick:   1234567890 AAPL 150.25 100" << std::endl;
+    LOG_ERROR("Main", "Usage: %s <port> [msgs_per_sec] [duration_sec]", argv[0]);
+    LOG_ERROR("Main", "Example: %s 9999 10000 10", argv[0]);
+    LOG_ERROR("Main", "  Sends 10,000 text ticks/sec for 10 seconds");
+    LOG_ERROR("Main", "Message format: timestamp symbol price volume\\n");
+    LOG_ERROR("Main", "Example tick:   1234567890 AAPL 150.25 100");
     return 1;
   }
 

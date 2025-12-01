@@ -27,59 +27,30 @@ struct TimedMessage {
       : tick(t), recv_timestamp_ns(recv_ts), parse_timestamp_ns(parse_ts) {}
 };
 
-// Specialized statistics collector for feed handler latency breakdown
+// Latency breakdown using consolidated LatencyStats from common.hpp
 struct FeedLatencyStats {
-  std::vector<uint64_t> recv_to_parse_ns;    // Network + parsing
-  std::vector<uint64_t> parse_to_process_ns; // Queue + processing
-  std::vector<uint64_t> total_latency_ns;    // End-to-end
+  LatencyStats recv_to_parse;    // Network + parsing
+  LatencyStats parse_to_process; // Queue + processing
+  LatencyStats total_latency;    // End-to-end
 
   void reserve(size_t n) {
-    recv_to_parse_ns.reserve(n);
-    parse_to_process_ns.reserve(n);
-    total_latency_ns.reserve(n);
+    recv_to_parse.reserve(n);
+    parse_to_process.reserve(n);
+    total_latency.reserve(n);
   }
 
   void add_measurement(uint64_t recv_ts, uint64_t parse_ts,
                        uint64_t process_ts) {
-    recv_to_parse_ns.push_back(parse_ts - recv_ts);
-    parse_to_process_ns.push_back(process_ts - parse_ts);
-    total_latency_ns.push_back(process_ts - recv_ts);
-  }
-
-  void print_stats(const std::string &name,
-                   const std::vector<uint64_t> &latencies) const {
-    if (latencies.empty())
-      return;
-
-    std::vector<uint64_t> sorted = latencies;
-    std::sort(sorted.begin(), sorted.end());
-
-    uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
-    double mean = static_cast<double>(sum) / sorted.size();
-
-    uint64_t p50 = sorted[sorted.size() * 50 / 100];
-    uint64_t p95 = sorted[sorted.size() * 95 / 100];
-    uint64_t p99 = sorted[sorted.size() * 99 / 100];
-    uint64_t max = sorted.back();
-
-    std::cout << "  " << name << ":" << std::endl;
-    std::cout << "    Mean: " << mean << " ns (" << mean / 1000.0 << " µs)"
-              << std::endl;
-    std::cout << "    p50:  " << p50 << " ns (" << p50 / 1000.0 << " µs)"
-              << std::endl;
-    std::cout << "    p95:  " << p95 << " ns (" << p95 / 1000.0 << " µs)"
-              << std::endl;
-    std::cout << "    p99:  " << p99 << " ns (" << p99 / 1000.0 << " µs)"
-              << std::endl;
-    std::cout << "    Max:  " << max << " ns (" << max / 1000.0 << " µs)"
-              << std::endl;
+    recv_to_parse.add(parse_ts - recv_ts);
+    parse_to_process.add(process_ts - parse_ts);
+    total_latency.add(process_ts - recv_ts);
   }
 
   void print_all() const {
     std::cout << "\n=== Latency Breakdown ===" << std::endl;
-    print_stats("Recv → Parse", recv_to_parse_ns);
-    print_stats("Parse → Process", parse_to_process_ns);
-    print_stats("Total (Recv → Process)", total_latency_ns);
+    recv_to_parse.print_indented("Recv → Parse");
+    parse_to_process.print_indented("Parse → Process");
+    total_latency.print_indented("Total (Recv → Process)");
   }
 };
 
@@ -100,12 +71,12 @@ public:
         messages_parsed_(0), bytes_received_(0) {}
 
   void run() {
-    std::cout << "[Reader] Thread started" << std::endl;
+    LOG_INFO("Reader", "Thread started");
 
     while (!should_stop_.load(std::memory_order_acquire)) {
       // Step 1: Read from socket into ring buffer
       if (!read_from_socket()) {
-        std::cout << "[Reader] Connection closed" << std::endl;
+        LOG_INFO("Reader", "Connection closed");
         break;
       }
 
@@ -113,9 +84,8 @@ public:
       parse_and_enqueue();
     }
 
-    std::cout << "[Reader] Thread exiting. Parsed " << messages_parsed_
-              << " messages (" << bytes_received_ / 1024.0 / 1024.0 << " MB)"
-              << std::endl;
+    LOG_INFO("Reader", "Thread exiting. Parsed %lu messages (%.2f MB)",
+             messages_parsed_, bytes_received_ / 1024.0 / 1024.0);
   }
 
   uint64_t get_message_count() const { return messages_parsed_; }
@@ -125,7 +95,7 @@ private:
     auto [write_ptr, write_space] = buffer_.get_write_ptr();
 
     if (write_space == 0) {
-      std::cerr << "[Reader] Ring buffer full!" << std::endl;
+      LOG_ERROR("Reader", "Ring buffer full!");
       return false;
     }
 
@@ -137,7 +107,7 @@ private:
         std::this_thread::yield();
         return true;
       } else {
-        perror("[Reader] recv failed");
+        LOG_PERROR("Reader", "recv failed");
         return false;
       }
     } else if (bytes_read == 0) {
@@ -178,7 +148,7 @@ private:
 
       // Validate length
       if (length != BinaryTick::PAYLOAD_SIZE) {
-        std::cerr << "[Reader] Invalid message length: " << length << std::endl;
+        LOG_ERROR("Reader", "Invalid message length: %u", length);
         return;
       }
 
@@ -229,7 +199,7 @@ public:
   }
 
   void run() {
-    std::cout << "[Consumer] Thread started" << std::endl;
+    LOG_INFO("Consumer", "Thread started");
 
     while (!reader_done_.load(std::memory_order_acquire) || !queue_.empty()) {
       auto msg = queue_.pop();
@@ -244,8 +214,7 @@ public:
           if (null_pos != std::string::npos) {
             symbol = symbol.substr(0, null_pos);
           }
-          std::cout << "[Consumer] [" << symbol << "] $" << msg->tick.price
-                    << " @ " << msg->tick.volume << std::endl;
+          LOG_INFO("Consumer", "[%s] $%.2f @ %d", symbol.c_str(), msg->tick.price, msg->tick.volume);
         }
 
         // Record latency
@@ -259,8 +228,7 @@ public:
       }
     }
 
-    std::cout << "[Consumer] Thread exiting. Processed " << messages_processed_
-              << " messages" << std::endl;
+    LOG_INFO("Consumer", "Thread exiting. Processed %lu messages", messages_processed_);
   }
 
   const FeedLatencyStats &get_stats() const { return stats_; }
@@ -270,7 +238,7 @@ public:
 int connect_to_exchange(const std::string &host, int port) {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    perror("socket creation failed");
+    LOG_PERROR("Connect", "socket creation failed");
     return -1;
   }
 
@@ -282,7 +250,7 @@ int connect_to_exchange(const std::string &host, int port) {
 
   if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
       0) {
-    perror("connection failed");
+    LOG_PERROR("Connect", "connection failed");
     close(sockfd);
     return -1;
   }
@@ -290,12 +258,12 @@ int connect_to_exchange(const std::string &host, int port) {
   // Set non-blocking mode
   int flags = fcntl(sockfd, F_GETFL, 0);
   if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    perror("fcntl failed");
+    LOG_PERROR("Connect", "fcntl failed");
     close(sockfd);
     return -1;
   }
 
-  std::cout << "Connected to " << host << ":" << port << std::endl;
+  LOG_INFO("Connect", "Connected to %s:%d", host.c_str(), port);
   return sockfd;
 }
 

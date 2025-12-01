@@ -25,6 +25,7 @@
 #endif
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 
 struct Connection {
   int sockfd;
@@ -54,7 +55,7 @@ int connect_to_exchange(int port) {
   // Create socket
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    perror("socket creation failed");
+    LOG_PERROR("Client", "socket creation failed");
     return -1;
   }
 
@@ -68,7 +69,7 @@ int connect_to_exchange(int port) {
   // Connect to server
   if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
       0) {
-    perror("connection failed");
+    LOG_PERROR("Client", "connection failed");
     close(sockfd);
     return -1;
   }
@@ -76,12 +77,12 @@ int connect_to_exchange(int port) {
   // Set non-blocking mode
   int flags = fcntl(sockfd, F_GETFL, 0);
   if (flags == -1) {
-    perror("fcntl F_GETFL failed");
+    LOG_PERROR("Client", "fcntl F_GETFL failed");
     close(sockfd);
     return -1;
   }
   if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    perror("fcntl F_SETFL failed");
+    LOG_PERROR("Client", "fcntl F_SETFL failed");
     close(sockfd);
     return -1;
   }
@@ -100,12 +101,11 @@ bool drain_socket(Connection &conn) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         break; // No more data available right now
       } else {
-        perror("recv failed");
+        LOG_PERROR("Client", "recv failed");
         return false; // Connection error
       }
     } else if (bytes_read == 0) {
-      std::cout << "Exchange " << conn.port << " closed connection"
-                << std::endl;
+      LOG_INFO("Client", "Exchange %d closed connection", conn.port);
       return false; // Connection closed
     } else {
       // Append received bytes to accumulation buffer
@@ -126,9 +126,8 @@ bool drain_socket(Connection &conn) {
 
       // Sanity check: length should be reasonable (20 bytes for our format)
       if (length != BinaryTick::PAYLOAD_SIZE) {
-        std::cerr << "ERROR: Invalid message length: " << length
-                  << " (expected " << BinaryTick::PAYLOAD_SIZE << ")"
-                  << std::endl;
+        LOG_ERROR("Client", "Invalid message length: %u (expected %zu)",
+                  length, BinaryTick::PAYLOAD_SIZE);
         return false; // Protocol error
       }
 
@@ -158,17 +157,17 @@ int main() {
 #ifdef USE_EPOLL
   int event_fd = epoll_create1(0);
   if (event_fd == -1) {
-    perror("epoll_create1 failed");
+    LOG_PERROR("Client", "epoll_create1 failed");
     return 1;
   }
-  std::cout << "Using epoll (Linux)" << std::endl;
+  LOG_INFO("Client", "Using epoll (Linux)");
 #elif defined(USE_KQUEUE)
   int event_fd = kqueue();
   if (event_fd == -1) {
-    perror("kqueue creation failed");
+    LOG_PERROR("Client", "kqueue creation failed");
     return 1;
   }
-  std::cout << "Using kqueue (macOS/BSD)" << std::endl;
+  LOG_INFO("Client", "Using kqueue (macOS/BSD)");
 #endif
 
   // Connect to 3 exchanges
@@ -188,7 +187,7 @@ int main() {
     ev.data.fd = sockfd;
 
     if (epoll_ctl(event_fd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
-      perror("epoll_ctl registration failed");
+      LOG_PERROR("Client", "epoll_ctl registration failed");
       close(sockfd);
       continue;
     }
@@ -196,7 +195,7 @@ int main() {
     struct kevent ev_set;
     EV_SET(&ev_set, sockfd, EVFILT_READ, EV_ADD, 0, 0, NULL);
     if (kevent(event_fd, &ev_set, 1, NULL, 0, NULL) == -1) {
-      perror("kevent registration failed");
+      LOG_PERROR("Client", "kevent registration failed");
       close(sockfd);
       continue;
     }
@@ -207,7 +206,7 @@ int main() {
   }
 
   if (connections.empty()) {
-    std::cerr << "Failed to connect to any exchanges" << std::endl;
+    LOG_ERROR("Client", "Failed to connect to any exchanges");
     close(event_fd);
     return 1;
   }
@@ -232,7 +231,7 @@ int main() {
 #endif
 
     if (nev == -1) {
-      perror("event wait failed");
+      LOG_PERROR("Client", "event wait failed");
       break;
     }
 

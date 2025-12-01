@@ -2,6 +2,7 @@
 #include <cstring>
 #include <string>
 
+#include "common.hpp"
 #include "ring_buffer.hpp"
 
 // Test fixture for RingBuffer tests
@@ -279,7 +280,7 @@ TEST_F(RingBufferTest, Throughput) {
   char read_data[MSG_SIZE];
   memset(write_data, 'X', MSG_SIZE);
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_ITERATIONS; ++i) {
     auto [ptr, space] = buffer_.get_write_ptr();
@@ -291,8 +292,8 @@ TEST_F(RingBufferTest, Throughput) {
     EXPECT_TRUE(buffer_.read_bytes(read_data, MSG_SIZE));
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double ops_per_sec = (static_cast<double>(NUM_ITERATIONS) / duration_us) * 1000000.0;
   double mb_per_sec = (static_cast<double>(NUM_ITERATIONS * MSG_SIZE) / duration_us);

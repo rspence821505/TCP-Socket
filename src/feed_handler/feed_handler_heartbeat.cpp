@@ -49,16 +49,15 @@ public:
       : conn_manager_(host, port), should_stop_(false), stats_() {}
 
   void run() {
-    std::cout << "=== Feed Handler with Heartbeat & Reconnection ===" << std::endl;
-    std::cout << "Features:" << std::endl;
-    std::cout << "  - Heartbeat detection (2s timeout)" << std::endl;
-    std::cout << "  - Automatic reconnection with exponential backoff" << std::endl;
-    std::cout << "  - Sequence number gap detection" << std::endl;
-    std::cout << std::endl;
+    LOG_INFO("FeedHandler", "=== Feed Handler with Heartbeat & Reconnection ===");
+    LOG_INFO("FeedHandler", "Features:");
+    LOG_INFO("FeedHandler", "  - Heartbeat detection (2s timeout)");
+    LOG_INFO("FeedHandler", "  - Automatic reconnection with exponential backoff");
+    LOG_INFO("FeedHandler", "  - Sequence number gap detection");
 
     // Initial connection
     if (!conn_manager_.connect()) {
-      std::cerr << "Failed to connect to exchange" << std::endl;
+      LOG_ERROR("FeedHandler", "Failed to connect to exchange");
       return;
     }
 
@@ -66,17 +65,15 @@ public:
     while (!should_stop_) {
       // Check for heartbeat timeout
       if (__builtin_expect(conn_manager_.is_heartbeat_timeout(), 0)) {
-        std::cout << "[FeedHandler] ⚠️  Heartbeat timeout detected ("
-                  << conn_manager_.seconds_since_last_message()
-                  << "s since last message)" << std::endl;
+        LOG_WARN("FeedHandler", "Heartbeat timeout detected (%ds since last message)",
+                 conn_manager_.seconds_since_last_message());
 
         // Attempt reconnection
         if (conn_manager_.reconnect()) {
           stats_.reconnections++;
           sequence_tracker_.reset();
         } else {
-          std::cerr << "[FeedHandler] Reconnection failed, retrying..."
-                    << std::endl;
+          LOG_ERROR("FeedHandler", "Reconnection failed, retrying...");
           continue;
         }
       }
@@ -84,7 +81,7 @@ public:
       // Read and process messages
       if (__builtin_expect(!read_and_process(), 0)) {
         // Connection closed by server
-        std::cout << "[FeedHandler] Connection closed by server" << std::endl;
+        LOG_INFO("FeedHandler", "Connection closed by server");
 
         if (!should_stop_) {
           // Try to reconnect
@@ -107,7 +104,7 @@ private:
     auto [write_ptr, write_space] = buffer_.get_write_ptr();
 
     if (__builtin_expect(write_space == 0, 0)) {
-      std::cerr << "[FeedHandler] Ring buffer full!" << std::endl;
+      LOG_ERROR("FeedHandler", "Ring buffer full!");
       return false;
     }
 
@@ -120,7 +117,7 @@ private:
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         return true;
       } else {
-        perror("[FeedHandler] recv failed");
+        LOG_PERROR("FeedHandler", "recv failed");
         return false;
       }
     } else if (__builtin_expect(bytes_read == 0, 0)) {
@@ -159,8 +156,7 @@ private:
       const bool is_heartbeat = (header.type == MessageType::HEARTBEAT);
 
       if (__builtin_expect(!is_tick && !is_heartbeat, 0)) {
-        std::cerr << "[FeedHandler] Unknown message type: "
-                  << static_cast<int>(header.type) << std::endl;
+        LOG_ERROR("FeedHandler", "Unknown message type: %d", static_cast<int>(header.type));
         return;
       }
 
@@ -230,10 +226,11 @@ private:
     if (__builtin_expect((stats_.ticks_received % 10000) == 0, 0)) {
       // Only compute symbol length when printing
       const int symbol_len = strnlen(symbol, 4);
+      char symbol_buf[5];
+      memcpy(symbol_buf, symbol, symbol_len);
+      symbol_buf[symbol_len] = '\0';
 
-      std::cout << "[Tick seq=" << header.sequence << "] [";
-      std::cout.write(symbol, symbol_len);
-      std::cout << "] $" << price << " @ " << volume << std::endl;
+      LOG_INFO("Tick", "seq=%lu [%s] $%.2f @ %d", header.sequence, symbol_buf, price, volume);
     }
   }
 
@@ -250,8 +247,7 @@ private:
 
     stats_.heartbeats_received++;
 
-    std::cout << "[Heartbeat seq=" << header.sequence
-              << "] timestamp=" << timestamp << std::endl;
+    LOG_INFO("Heartbeat", "seq=%lu timestamp=%lu", header.sequence, timestamp);
   }
 
   ConnectionManager conn_manager_;

@@ -85,61 +85,61 @@ public:
     // Create UDP socket
     udp_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_fd_ < 0) {
-      perror("UDP socket creation failed");
+      LOG_PERROR("UDPFeed", "UDP socket creation failed");
       return false;
     }
-    
+
     // Bind UDP socket to receive on specific port
     struct sockaddr_in udp_addr;
     memset(&udp_addr, 0, sizeof(udp_addr));
     udp_addr.sin_family = AF_INET;
     udp_addr.sin_addr.s_addr = INADDR_ANY;
     udp_addr.sin_port = htons(udp_port_);
-    
+
     if (bind(udp_fd_, (struct sockaddr*)&udp_addr, sizeof(udp_addr)) < 0) {
-      perror("UDP bind failed");
+      LOG_PERROR("UDPFeed", "UDP bind failed");
       close(udp_fd_);
       return false;
     }
-    
+
     // Set UDP socket to non-blocking
     int flags = fcntl(udp_fd_, F_GETFL, 0);
     fcntl(udp_fd_, F_SETFL, flags | O_NONBLOCK);
-    
+
     // Connect to TCP control channel
     tcp_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (tcp_fd_ < 0) {
-      perror("TCP socket creation failed");
+      LOG_PERROR("UDPFeed", "TCP socket creation failed");
       close(udp_fd_);
       return false;
     }
-    
+
     struct sockaddr_in tcp_addr;
     memset(&tcp_addr, 0, sizeof(tcp_addr));
     tcp_addr.sin_family = AF_INET;
     tcp_addr.sin_addr.s_addr = inet_addr(host_.c_str());
     tcp_addr.sin_port = htons(tcp_port_);
-    
+
     if (connect(tcp_fd_, (struct sockaddr*)&tcp_addr, sizeof(tcp_addr)) < 0) {
-      perror("TCP connection failed");
+      LOG_PERROR("UDPFeed", "TCP connection failed");
       close(udp_fd_);
       close(tcp_fd_);
       return false;
     }
-    
+
     // Set TCP socket to non-blocking
     flags = fcntl(tcp_fd_, F_GETFL, 0);
     fcntl(tcp_fd_, F_SETFL, flags | O_NONBLOCK);
-    
-    std::cout << "📡 UDP Feed Handler started" << std::endl;
-    std::cout << "  UDP feed: " << host_ << ":" << udp_port_ << std::endl;
-    std::cout << "  TCP control: " << host_ << ":" << tcp_port_ << std::endl;
-    
+
+    LOG_INFO("UDPFeed", "UDP Feed Handler started");
+    LOG_INFO("UDPFeed", "  UDP feed: %s:%d", host_.c_str(), udp_port_);
+    LOG_INFO("UDPFeed", "  TCP control: %s:%d", host_.c_str(), tcp_port_);
+
     return true;
   }
   
   void run(std::chrono::seconds duration) {
-    std::cout << "Receiving UDP feed for " << duration.count() << " seconds..." << std::endl;
+    LOG_INFO("UDPFeed", "Receiving UDP feed for %ld seconds...", duration.count());
     
     auto start_time = std::chrono::steady_clock::now();
     auto last_gap_check = start_time;
@@ -208,14 +208,14 @@ private:
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
           break;  // No more data
         } else {
-          perror("UDP recvfrom failed");
+          LOG_PERROR("UDPFeed", "UDP recvfrom failed");
           break;
         }
       }
-      
+
       // Parse message
       if (bytes_read < static_cast<ssize_t>(MessageHeader::HEADER_SIZE)) {
-        std::cerr << "Incomplete message received" << std::endl;
+        LOG_ERROR("UDPFeed", "Incomplete message received");
         continue;
       }
       
@@ -253,10 +253,9 @@ private:
           if (null_pos != std::string::npos) {
             symbol = symbol.substr(0, null_pos);
           }
-          
-          std::cout << "[UDP seq=" << header.sequence << "] [" << symbol << "] $"
-                    << tick.price << " @ " << tick.volume 
-                    << " | Active gaps: " << gap_tracker_.active_gaps() << std::endl;
+
+          LOG_INFO("UDP", "seq=%lu [%s] $%.2f @ %d | Active gaps: %zu",
+                   header.sequence, symbol.c_str(), tick.price, tick.volume, gap_tracker_.active_gaps());
         }
       }
     }
@@ -272,11 +271,11 @@ private:
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
           break;  // No more data
         } else {
-          perror("TCP recv failed");
+          LOG_PERROR("UDPFeed", "TCP recv failed");
           break;
         }
       } else if (bytes_read == 0) {
-        std::cerr << "TCP control channel closed" << std::endl;
+        LOG_ERROR("UDPFeed", "TCP control channel closed");
         should_stop_ = true;
         break;
       }
@@ -303,10 +302,10 @@ private:
           
           if (filled_gap) {
             stats_.gaps_filled++;
-            
+
             if (stats_.gaps_filled % 100 == 0) {
-              std::cout << "[TCP Retransmit seq=" << header.sequence << "] Gap filled! "
-                        << "Remaining gaps: " << gap_tracker_.active_gaps() << std::endl;
+              LOG_INFO("TCP", "Retransmit seq=%lu Gap filled! Remaining gaps: %zu",
+                       header.sequence, gap_tracker_.active_gaps());
             }
           } else {
             stats_.duplicates++;
@@ -335,17 +334,17 @@ private:
       if (requests_sent >= max_requests) {
         break;
       }
-      
-      std::cout << "[Retransmit Request] Requesting seq " << start << " to " << end << std::endl;
-      
+
+      LOG_INFO("Retransmit", "Requesting seq %lu to %lu", start, end);
+
       std::string request = serialize_retransmit_request(start, end);
-      
+
       ssize_t sent = send(tcp_fd_, request.data(), request.length(), 0);
       if (sent < 0) {
-        perror("Failed to send retransmit request");
+        LOG_PERROR("Retransmit", "Failed to send retransmit request");
         break;
       }
-      
+
       stats_.retransmit_requests_sent++;
       requests_sent++;
     }

@@ -66,20 +66,19 @@ public:
         messages_parsed_(0), bytes_received_(0) {}
 
   void run() {
-    std::cout << "[Reader] Thread started" << std::endl;
+    LOG_INFO("Reader", "Thread started");
 
     while (!should_stop_.load(std::memory_order_acquire)) {
       if (!read_from_socket()) {
-        std::cout << "[Reader] Connection closed" << std::endl;
+        LOG_INFO("Reader", "Connection closed");
         break;
       }
 
       parse_and_enqueue();
     }
 
-    std::cout << "[Reader] Thread exiting. Parsed " << messages_parsed_
-              << " messages (" << bytes_received_ / 1024.0 / 1024.0 << " MB)"
-              << std::endl;
+    LOG_INFO("Reader", "Thread exiting. Parsed %lu messages (%.2f MB)",
+             messages_parsed_, bytes_received_ / 1024.0 / 1024.0);
   }
 
   uint64_t get_message_count() const { return messages_parsed_; }
@@ -89,7 +88,7 @@ private:
     auto [write_ptr, write_space] = buffer_.get_write_ptr();
 
     if (write_space == 0) {
-      std::cerr << "[Reader] Ring buffer full!" << std::endl;
+      LOG_ERROR("Reader", "Ring buffer full!");
       return false;
     }
 
@@ -100,7 +99,7 @@ private:
         std::this_thread::yield();
         return true;
       } else {
-        perror("[Reader] recv failed");
+        LOG_PERROR("Reader", "recv failed");
         return false;
       }
     } else if (bytes_read == 0) {
@@ -131,7 +130,7 @@ private:
       uint32_t length = ntohl(length_net);
 
       if (length != BinaryTick::PAYLOAD_SIZE) {
-        std::cerr << "[Reader] Invalid message length: " << length << std::endl;
+        LOG_ERROR("Reader", "Invalid message length: %u", length);
         return;
       }
 
@@ -178,8 +177,7 @@ public:
         stats_(stats) {}
 
   void run() {
-    std::cout << "[Consumer " << consumer_id_ << "] Thread started"
-              << std::endl;
+    LOG_INFO("Consumer", "Consumer %d thread started", consumer_id_);
 
     uint64_t local_messages = 0;
     uint64_t local_latency = 0;
@@ -197,9 +195,8 @@ public:
           if (null_pos != std::string::npos) {
             symbol = symbol.substr(0, null_pos);
           }
-          std::cout << "[Consumer " << consumer_id_ << "] [" << symbol << "] $"
-                    << msg->tick.price << " @ " << msg->tick.volume
-                    << std::endl;
+          LOG_INFO("Consumer", "[%d] [%s] $%.2f @ %d", consumer_id_, symbol.c_str(),
+                   msg->tick.price, msg->tick.volume);
         }
 
         // Accumulate stats locally (reduce atomic contention)
@@ -223,15 +220,15 @@ public:
     stats_.messages_processed += local_messages;
     stats_.total_latency_ns += local_latency;
 
-    std::cout << "[Consumer " << consumer_id_ << "] Thread exiting. Processed "
-              << stats_.messages_processed << " messages" << std::endl;
+    LOG_INFO("Consumer", "Consumer %d thread exiting. Processed %lu messages",
+             consumer_id_, stats_.messages_processed);
   }
 };
 
 int connect_to_exchange(const std::string &host, int port) {
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    perror("socket creation failed");
+    LOG_PERROR("Connect", "socket creation failed");
     return -1;
   }
 
@@ -243,19 +240,19 @@ int connect_to_exchange(const std::string &host, int port) {
 
   if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
       0) {
-    perror("connection failed");
+    LOG_PERROR("Connect", "connection failed");
     close(sockfd);
     return -1;
   }
 
   int flags = fcntl(sockfd, F_GETFL, 0);
   if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    perror("fcntl failed");
+    LOG_PERROR("Connect", "fcntl failed");
     close(sockfd);
     return -1;
   }
 
-  std::cout << "Connected to " << host << ":" << port << std::endl;
+  LOG_INFO("Connect", "Connected to %s:%d", host.c_str(), port);
   return sockfd;
 }
 

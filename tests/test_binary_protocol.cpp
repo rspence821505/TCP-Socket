@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 
 // Test fixture for Binary Protocol tests
 class BinaryProtocolTest : public ::testing::Test {
@@ -278,7 +279,7 @@ TEST_F(BinaryProtocolTest, SerializationThroughput) {
   constexpr size_t NUM_MESSAGES = 100000;
   char symbol[4] = {'T', 'E', 'S', 'T'};
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (size_t i = 0; i < NUM_MESSAGES; ++i) {
     std::string msg = serialize_tick(i, 1234567890 + i, symbol, 100.0f + i, 100);
@@ -286,8 +287,8 @@ TEST_F(BinaryProtocolTest, SerializationThroughput) {
     ASSERT_FALSE(msg.empty());
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double msgs_per_sec = (static_cast<double>(NUM_MESSAGES) / duration_us) * 1000000.0;
   std::cout << "  Serialization throughput: " << static_cast<size_t>(msgs_per_sec) << " msgs/sec" << std::endl;
@@ -306,7 +307,7 @@ TEST_F(BinaryProtocolTest, DeserializationThroughput) {
     messages.push_back(serialize_tick(i, 1234567890 + i, symbol, 100.0f + i, 100));
   }
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   uint64_t checksum = 0;
   for (const auto& msg : messages) {
@@ -315,8 +316,8 @@ TEST_F(BinaryProtocolTest, DeserializationThroughput) {
     checksum += tick.volume;  // Prevent optimization
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double msgs_per_sec = (static_cast<double>(NUM_MESSAGES) / duration_us) * 1000000.0;
   std::cout << "  Deserialization throughput: " << static_cast<size_t>(msgs_per_sec) << " msgs/sec" << std::endl;

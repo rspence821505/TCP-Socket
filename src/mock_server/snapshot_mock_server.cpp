@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 
 // Global flag for graceful shutdown
 volatile sig_atomic_t keep_running = 1;
@@ -146,13 +147,13 @@ public:
   bool start() {
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-      perror("socket creation failed");
+      LOG_PERROR("Server", "socket creation failed");
       return false;
     }
 
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-      perror("setsockopt failed");
+      LOG_PERROR("Server", "setsockopt failed");
       close(server_fd);
       return false;
     }
@@ -164,22 +165,21 @@ public:
     server_addr.sin_port = htons(port);
 
     if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-      perror("bind failed");
+      LOG_PERROR("Server", "bind failed");
       close(server_fd);
       return false;
     }
 
     if (listen(server_fd, 5) < 0) {
-      perror("listen failed");
+      LOG_PERROR("Server", "listen failed");
       close(server_fd);
       return false;
     }
 
-    std::cout << "📊 Snapshot-enabled mock server listening on port " << port << std::endl;
-    std::cout << "Configuration:" << std::endl;
-    std::cout << "  Heartbeat interval: " << heartbeat_interval_ms_ << "ms" << std::endl;
-    std::cout << "  Updates per second: " << updates_per_second_ << std::endl;
-    std::cout << "  Symbols: ";
+    LOG_INFO("Server", "Snapshot-enabled mock server listening on port %d", port);
+    LOG_INFO("Server", "  Heartbeat interval: %dms", heartbeat_interval_ms_);
+    LOG_INFO("Server", "  Updates per second: %d", updates_per_second_);
+    std::cout << "[Server] Symbols: ";
     for (const auto& [symbol, book] : order_books_) {
       std::cout << symbol << " ";
     }
@@ -189,7 +189,7 @@ public:
 
   void run() {
     while (keep_running) {
-      std::cout << "Waiting for client connection..." << std::endl;
+      LOG_INFO("Server", "Waiting for client connection...");
 
       struct sockaddr_in client_addr;
       socklen_t client_len = sizeof(client_addr);
@@ -197,20 +197,20 @@ public:
       int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
       if (client_fd < 0) {
         if (keep_running) {
-          perror("accept failed");
+          LOG_PERROR("Server", "accept failed");
         }
         continue;
       }
 
-      std::cout << "✅ Client connected from " << inet_ntoa(client_addr.sin_addr)
-                << ":" << ntohs(client_addr.sin_port) << std::endl;
+      LOG_INFO("Server", "Client connected from %s:%d", inet_ntoa(client_addr.sin_addr),
+               ntohs(client_addr.sin_port));
 
       // Reset sequence number for new connection
       sequence_number_ = 0;
-      
+
       handle_client(client_fd);
 
-      std::cout << "Client disconnected" << std::endl;
+      LOG_INFO("Server", "Client disconnected");
     }
   }
 
@@ -271,9 +271,9 @@ public:
       }
     }
     
-    std::cout << "Session stats: " << heartbeat_count << " heartbeats, " 
-              << update_count << " updates sent" << std::endl;
-    
+    LOG_INFO("Server", "Session stats: %lu heartbeats, %lu updates sent",
+             heartbeat_count, update_count);
+
     close(client_fd);
   }
   
@@ -303,8 +303,8 @@ public:
         symbol_str = symbol_str.substr(0, null_pos);
       }
       
-      std::cout << "📥 Received snapshot request for symbol: " << symbol_str << std::endl;
-      
+      LOG_INFO("Server", "Received snapshot request for symbol: %s", symbol_str.c_str());
+
       // Send snapshot
       send_snapshot(client_fd, symbol_str);
       snapshot_sent = true;
@@ -314,31 +314,31 @@ public:
   bool send_snapshot(int client_fd, const std::string& symbol_str) {
     auto it = order_books_.find(symbol_str);
     if (it == order_books_.end()) {
-      std::cerr << "Unknown symbol: " << symbol_str << std::endl;
+      LOG_ERROR("Server", "Unknown symbol: %s", symbol_str.c_str());
       return false;
     }
-    
+
     const auto& book = it->second;
-    
+
     // Get top 10 levels
     auto bids = book.get_top_bids(10);
     auto asks = book.get_top_asks(10);
-    
+
     char symbol[4];
     memset(symbol, 0, 4);
     memcpy(symbol, symbol_str.c_str(), std::min(symbol_str.size(), size_t(4)));
-    
+
     std::string message = serialize_snapshot_response(sequence_number_++, symbol, bids, asks);
-    
+
     ssize_t bytes_sent = send(client_fd, message.data(), message.length(), 0);
     if (bytes_sent < 0) {
-      perror("send snapshot failed");
+      LOG_PERROR("Server", "send snapshot failed");
       return false;
     }
-    
-    std::cout << "📤 Sent snapshot (seq=" << (sequence_number_ - 1) << ") for " << symbol_str 
-              << ": " << bids.size() << " bids, " << asks.size() << " asks" << std::endl;
-    
+
+    LOG_INFO("Server", "Sent snapshot (seq=%lu) for %s: %zu bids, %zu asks",
+             sequence_number_ - 1, symbol_str.c_str(), bids.size(), asks.size());
+
     return true;
   }
   
@@ -365,25 +365,25 @@ public:
     
     ssize_t bytes_sent = send(client_fd, message.data(), message.length(), 0);
     if (bytes_sent < 0) {
-      perror("send update failed");
+      LOG_PERROR("Server", "send update failed");
       return false;
     }
-    
+
     return true;
   }
   
   bool send_heartbeat(int client_fd) {
-    auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+    uint64_t timestamp = now_ns();
     std::string message = serialize_heartbeat(sequence_number_++, timestamp);
-    
+
     ssize_t bytes_sent = send(client_fd, message.data(), message.length(), 0);
     if (bytes_sent < 0) {
-      perror("send heartbeat failed");
+      LOG_PERROR("Server", "send heartbeat failed");
       return false;
     }
-    
-    std::cout << "[Server] 💓 Heartbeat (seq=" << (sequence_number_ - 1) << ")" << std::endl;
-    
+
+    LOG_INFO("Server", "Heartbeat (seq=%lu)", sequence_number_ - 1);
+
     return true;
   }
 
@@ -422,6 +422,6 @@ int main(int argc, char* argv[]) {
 
   server.run();
 
-  std::cout << "\n🛑 Server shutting down..." << std::endl;
+  LOG_INFO("Server", "Server shutting down...");
   return 0;
 }

@@ -2,7 +2,6 @@
 #include <chrono>
 #include <csignal>
 #include <cstring>
-#include <iostream>
 #include <netinet/in.h>
 #include <random>
 #include <string>
@@ -12,6 +11,7 @@
 #include <vector>
 
 #include "binary_protocol.hpp"
+#include "common.hpp"
 
 // Global flag for graceful shutdown
 volatile sig_atomic_t keep_running = 1;
@@ -35,7 +35,7 @@ public:
     // 1. Create socket
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-      perror("socket creation failed");
+      LOG_PERROR("Server", "socket creation failed");
       return false;
     }
 
@@ -43,7 +43,7 @@ public:
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) <
         0) {
-      perror("setsockopt failed");
+      LOG_PERROR("Server", "setsockopt failed");
       close(server_fd);
       return false;
     }
@@ -59,26 +59,25 @@ public:
     // 4. Bind socket to address
     if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
         0) {
-      perror("bind failed");
+      LOG_PERROR("Server", "bind failed");
       close(server_fd);
       return false;
     }
 
     // 5. Listen for connections
     if (listen(server_fd, 5) < 0) {
-      perror("listen failed");
+      LOG_PERROR("Server", "listen failed");
       close(server_fd);
       return false;
     }
 
-    std::cout << "Binary mock exchange server listening on port " << port
-              << std::endl;
+    LOG_INFO("Server", "Binary mock exchange server listening on port %d", port);
     return true;
   }
 
   void run() {
     while (keep_running) {
-      std::cout << "Waiting for client connection..." << std::endl;
+      LOG_INFO("Server", "Waiting for client connection...");
 
       // Accept a client connection
       struct sockaddr_in client_addr;
@@ -88,18 +87,18 @@ public:
           accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
       if (client_fd < 0) {
         if (keep_running) {
-          perror("accept failed");
+          LOG_PERROR("Server", "accept failed");
         }
         continue;
       }
 
-      std::cout << "Client connected from " << inet_ntoa(client_addr.sin_addr)
-                << ":" << ntohs(client_addr.sin_port) << std::endl;
+      LOG_INFO("Server", "Client connected from %s:%d", inet_ntoa(client_addr.sin_addr),
+               ntohs(client_addr.sin_port));
 
       // Handle this client
       handle_client(client_fd);
 
-      std::cout << "Client disconnected" << std::endl;
+      LOG_INFO("Server", "Client disconnected");
     }
   }
 
@@ -114,7 +113,7 @@ public:
 
       ssize_t bytes_sent = send(client_fd, message.data(), message.length(), 0);
       if (bytes_sent < 0) {
-        perror("send failed");
+        LOG_PERROR("Server", "send failed");
         break;
       }
 
@@ -132,9 +131,8 @@ public:
         end_time - start_time);
     double seconds = duration.count() / 1000.0;
 
-    std::cout << "Sent " << message_count << " messages in " << seconds << "s ("
-              << static_cast<int>(message_count / seconds) << " msgs/sec)"
-              << std::endl;
+    LOG_INFO("Server", "Sent %lu messages in %.2fs (%d msgs/sec)",
+             message_count, seconds, static_cast<int>(message_count / seconds));
 
     close(client_fd);
   }
@@ -143,8 +141,7 @@ public:
     BinaryTick tick;
 
     // Generate timestamp
-    tick.timestamp =
-        std::chrono::system_clock::now().time_since_epoch().count();
+    tick.timestamp = now_ns();
 
     // Random symbol
     std::uniform_int_distribution<size_t> symbol_dist(0, symbols.size() - 1);
@@ -191,6 +188,6 @@ int main(int argc, char *argv[]) {
 
   server.run();
 
-  std::cout << "\nServer shutting down..." << std::endl;
+  LOG_INFO("Server", "Server shutting down...");
   return 0;
 }

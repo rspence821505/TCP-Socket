@@ -17,21 +17,24 @@
 #include "socket_config.hpp"
 #include "udp_protocol.hpp"
 
-// Protocol comparison latency statistics
+// Protocol comparison statistics using consolidated LatencyStats from common.hpp
 struct ProtocolLatencyStats {
-  std::vector<uint64_t> latencies_ns;
+  LatencyStats latency;
   uint64_t messages_received = 0;
   uint64_t gaps_detected = 0;
 
-  void add(uint64_t latency_ns) { latencies_ns.push_back(latency_ns); }
+  void reserve(size_t n) { latency.reserve(n); }
+
+  void add(uint64_t latency_ns) { latency.add(latency_ns); }
 
   void print_summary(const std::string &protocol) const {
-    if (latencies_ns.empty()) {
+    if (latency.empty()) {
       std::cout << protocol << ": No data" << std::endl;
       return;
     }
 
-    std::vector<uint64_t> sorted = latencies_ns;
+    const auto &data = latency.data();
+    std::vector<uint64_t> sorted = data;
     std::sort(sorted.begin(), sorted.end());
 
     uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
@@ -56,10 +59,11 @@ struct ProtocolLatencyStats {
   }
 
   void to_csv_line(const std::string &protocol) const {
-    if (latencies_ns.empty())
+    if (latency.empty())
       return;
 
-    std::vector<uint64_t> sorted = latencies_ns;
+    const auto &data = latency.data();
+    std::vector<uint64_t> sorted = data;
     std::sort(sorted.begin(), sorted.end());
 
     uint64_t sum = std::accumulate(sorted.begin(), sorted.end(), 0ULL);
@@ -88,7 +92,7 @@ ProtocolLatencyStats run_tcp_benchmark(const std::string &host, int port,
   // Connect
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    perror("socket creation failed");
+    LOG_PERROR("TCP", "socket creation failed");
     return stats;
   }
 
@@ -102,7 +106,7 @@ ProtocolLatencyStats run_tcp_benchmark(const std::string &host, int port,
 
   if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
       0) {
-    perror("connection failed");
+    LOG_PERROR("TCP", "connection failed");
     close(sockfd);
     return stats;
   }
@@ -129,7 +133,7 @@ ProtocolLatencyStats run_tcp_benchmark(const std::string &host, int port,
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         continue;
       } else {
-        perror("recv failed");
+        LOG_PERROR("TCP", "recv failed");
         break;
       }
     } else if (bytes_read == 0) {
@@ -144,8 +148,8 @@ ProtocolLatencyStats run_tcp_benchmark(const std::string &host, int port,
       MessageHeader header = deserialize_header(buffer.data());
 
       if (header.length != TickPayload::PAYLOAD_SIZE) {
-        std::cerr << "Invalid message length: " << header.length
-                  << " (expected " << TickPayload::PAYLOAD_SIZE << ")" << std::endl;
+        LOG_ERROR("TCP", "Invalid message length: %u (expected %zu)",
+                  header.length, TickPayload::PAYLOAD_SIZE);
         close(sockfd);
         return stats;
       }
@@ -195,7 +199,7 @@ ProtocolLatencyStats run_udp_benchmark(const std::string &host, int udp_port,
   // Create UDP socket
   int udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
   if (udp_fd < 0) {
-    perror("UDP socket creation failed");
+    LOG_PERROR("UDP", "socket creation failed");
     return stats;
   }
 
@@ -207,7 +211,7 @@ ProtocolLatencyStats run_udp_benchmark(const std::string &host, int udp_port,
   udp_addr.sin_port = htons(udp_port);
 
   if (bind(udp_fd, (struct sockaddr *)&udp_addr, sizeof(udp_addr)) < 0) {
-    perror("UDP bind failed");
+    LOG_PERROR("UDP", "bind failed");
     close(udp_fd);
     return stats;
   }
@@ -219,7 +223,7 @@ ProtocolLatencyStats run_udp_benchmark(const std::string &host, int udp_port,
   // Connect to TCP control channel
   int tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (tcp_fd < 0) {
-    perror("TCP socket creation failed");
+    LOG_PERROR("UDP", "TCP control socket creation failed");
     close(udp_fd);
     return stats;
   }
@@ -231,7 +235,7 @@ ProtocolLatencyStats run_udp_benchmark(const std::string &host, int udp_port,
   tcp_addr.sin_port = htons(tcp_port);
 
   if (connect(tcp_fd, (struct sockaddr *)&tcp_addr, sizeof(tcp_addr)) < 0) {
-    perror("TCP connection failed");
+    LOG_PERROR("UDP", "TCP control connection failed");
     close(udp_fd);
     close(tcp_fd);
     return stats;
@@ -268,7 +272,7 @@ ProtocolLatencyStats run_udp_benchmark(const std::string &host, int udp_port,
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
           break;
         } else {
-          perror("UDP recvfrom failed");
+          LOG_PERROR("UDP", "recvfrom failed");
           break;
         }
       }
@@ -358,9 +362,9 @@ void print_comparison(const ProtocolLatencyStats &tcp_stats,
   udp_stats.print_summary("UDP");
 
   // Calculate improvements
-  if (!tcp_stats.latencies_ns.empty() && !udp_stats.latencies_ns.empty()) {
-    auto tcp_sorted = tcp_stats.latencies_ns;
-    auto udp_sorted = udp_stats.latencies_ns;
+  if (!tcp_stats.latency.empty() && !udp_stats.latency.empty()) {
+    std::vector<uint64_t> tcp_sorted = tcp_stats.latency.data();
+    std::vector<uint64_t> udp_sorted = udp_stats.latency.data();
     std::sort(tcp_sorted.begin(), tcp_sorted.end());
     std::sort(udp_sorted.begin(), udp_sorted.end());
 

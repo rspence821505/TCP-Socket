@@ -2,6 +2,7 @@
 #include <string>
 #include <string_view>
 
+#include "common.hpp"
 #include "text_protocol.hpp"
 
 // Test fixture for Text Protocol tests
@@ -255,7 +256,7 @@ TEST_F(TextProtocolTest, ParsingThroughput) {
   const std::string tick_line = "1234567890123 AAPL 150.25 100";
   constexpr size_t NUM_PARSES = 100000;
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   size_t success_count = 0;
   for (size_t i = 0; i < NUM_PARSES; ++i) {
@@ -265,8 +266,8 @@ TEST_F(TextProtocolTest, ParsingThroughput) {
     }
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   EXPECT_EQ(success_count, NUM_PARSES);
 

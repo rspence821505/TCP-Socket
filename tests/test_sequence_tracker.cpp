@@ -2,6 +2,7 @@
 #include <sstream>
 #include <iostream>
 
+#include "common.hpp"
 #include "sequence_tracker.hpp"
 
 // =============================================================================
@@ -396,14 +397,14 @@ TEST_F(SequenceTrackerPerformanceTest, HighVolume) {
   // Process many sequential messages quickly
   constexpr size_t NUM_MESSAGES = 1000000;
 
-  auto start = std::chrono::high_resolution_clock::now();
+  uint64_t start = now_us();
 
   for (uint64_t i = 0; i < NUM_MESSAGES; ++i) {
     tracker_.process_sequence(i);
   }
 
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  uint64_t end = now_us();
+  uint64_t duration_us = end - start;
 
   double msgs_per_sec = (static_cast<double>(NUM_MESSAGES) / duration_us) * 1000000.0;
 
