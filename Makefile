@@ -11,6 +11,12 @@ INCLUDE_DIR = include
 BUILD_DIR = build
 TESTS_DIR = tests
 
+# Source subdirectories
+SRC_FEED_HANDLER = $(SRC_DIR)/feed_handler
+SRC_MOCK_SERVER = $(SRC_DIR)/mock_server
+SRC_CLIENT = $(SRC_DIR)/client
+SRC_BENCHMARK = $(SRC_DIR)/benchmark
+
 # Include path
 INCLUDES = -I$(INCLUDE_DIR)
 
@@ -24,7 +30,7 @@ PROFILE_FLAGS = -O2 -g -fno-omit-frame-pointer
 OPTIMIZE_FLAGS = -O3 -g -fno-omit-frame-pointer
 
 # Source files
-SRCS = $(wildcard $(SRC_DIR)/*.cpp)
+SRCS = $(wildcard $(SRC_DIR)/*/*.cpp)
 TEST_SRCS = $(wildcard $(TESTS_DIR)/*.cpp)
 
 # Main targets
@@ -49,73 +55,101 @@ $(BUILD_DIR):
 # Alias for build directory
 directories: $(BUILD_DIR)
 
-# Binary targets
-binary_client: $(SRC_DIR)/binary_client.cpp $(INCLUDE_DIR)/binary_protocol.hpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/binary_client.cpp -o $(BUILD_DIR)/binary_client
-
-binary_client_zerocopy: $(SRC_DIR)/binary_client_zerocopy.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/ring_buffer.hpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/binary_client_zerocopy.cpp -o $(BUILD_DIR)/binary_client_zerocopy
-
-binary_mock_server: $(SRC_DIR)/binary_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/binary_mock_server.cpp -o $(BUILD_DIR)/binary_mock_server
-
-mock_server: $(SRC_DIR)/mock_server.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/mock_server.cpp -o $(BUILD_DIR)/mock_server
-
-blocking_client: $(SRC_DIR)/blocking_client.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/blocking_client.cpp -o $(BUILD_DIR)/blocking_client
-
-feed_handler_spsc: $(SRC_DIR)/feed_handler_spsc.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp
-	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_spsc.cpp -o $(BUILD_DIR)/feed_handler_spsc
-
-feed_handler_spmc: $(SRC_DIR)/feed_handler_spmc.cpp $(INCLUDE_DIR)/binary_protocol.hpp
-	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_spmc.cpp -o $(BUILD_DIR)/feed_handler_spmc
-
-socket_tuning_benchmark: $(SRC_DIR)/socket_tuning_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/socket_config.hpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_DIR)/socket_tuning_benchmark.cpp -o $(BUILD_DIR)/socket_tuning_benchmark
-
-# Heartbeat binaries
-feed_handler_heartbeat: $(SRC_DIR)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
-	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_heartbeat.cpp -o $(BUILD_DIR)/feed_handler_heartbeat
-
-heartbeat_mock_server: $(SRC_DIR)/heartbeat_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
-	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/heartbeat_mock_server.cpp -o $(BUILD_DIR)/heartbeat_mock_server
-
-# Extension: Snapshot Recovery
-feed_handler_snapshot: $(SRC_DIR)/feed_handler_snapshot.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/order_book.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
-	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_snapshot.cpp -o $(BUILD_DIR)/feed_handler_snapshot
-
-snapshot_mock_server: $(SRC_DIR)/snapshot_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
-	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/snapshot_mock_server.cpp -o $(BUILD_DIR)/snapshot_mock_server
-
-# UDP Benchmark
-udp_mock_server: $(SRC_DIR)/udp_mock_server.cpp $(INCLUDE_DIR)/udp_protocol.hpp
-	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/udp_mock_server.cpp -o $(BUILD_DIR)/udp_mock_server
-
-udp_feed_handler: $(SRC_DIR)/udp_feed_handler.cpp $(INCLUDE_DIR)/udp_protocol.hpp
-	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/udp_feed_handler.cpp -o $(BUILD_DIR)/udp_feed_handler
-
-tcp_vs_udp_benchmark: $(SRC_DIR)/tcp_vs_udp_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/udp_protocol.hpp
-	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/tcp_vs_udp_benchmark.cpp -o $(BUILD_DIR)/tcp_vs_udp_benchmark
-
 #=============================================================================
-# Text Protocol (newline-delimited ticks)
+# Client binaries
 #=============================================================================
 
-# Text mock server - sends "timestamp symbol price volume\n" format
-text_mock_server: $(BUILD_DIR) $(SRC_DIR)/text_mock_server.cpp $(INCLUDE_DIR)/text_protocol.hpp
+binary_client: $(SRC_CLIENT)/binary_client.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_CLIENT)/binary_client.cpp -o $(BUILD_DIR)/binary_client
+
+binary_client_zerocopy: $(SRC_CLIENT)/binary_client_zerocopy.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/ring_buffer.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_CLIENT)/binary_client_zerocopy.cpp -o $(BUILD_DIR)/binary_client_zerocopy
+
+blocking_client: $(SRC_CLIENT)/blocking_client.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_CLIENT)/blocking_client.cpp -o $(BUILD_DIR)/blocking_client
+
+#=============================================================================
+# Mock server binaries
+#=============================================================================
+
+binary_mock_server: $(SRC_MOCK_SERVER)/binary_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_MOCK_SERVER)/binary_mock_server.cpp -o $(BUILD_DIR)/binary_mock_server
+
+mock_server: $(SRC_MOCK_SERVER)/mock_server.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_MOCK_SERVER)/mock_server.cpp -o $(BUILD_DIR)/mock_server
+
+heartbeat_mock_server: $(SRC_MOCK_SERVER)/heartbeat_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_MOCK_SERVER)/heartbeat_mock_server.cpp -o $(BUILD_DIR)/heartbeat_mock_server
+
+snapshot_mock_server: $(SRC_MOCK_SERVER)/snapshot_mock_server.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_MOCK_SERVER)/snapshot_mock_server.cpp -o $(BUILD_DIR)/snapshot_mock_server
+
+text_mock_server: $(BUILD_DIR) $(SRC_MOCK_SERVER)/text_mock_server.cpp $(INCLUDE_DIR)/text_protocol.hpp
 	@echo "Building text mock server..."
-	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_DIR)/text_mock_server.cpp -o $(BUILD_DIR)/text_mock_server
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_MOCK_SERVER)/text_mock_server.cpp -o $(BUILD_DIR)/text_mock_server
 
-# Text feed handler - receives and parses text ticks
-feed_handler_text: $(BUILD_DIR) $(SRC_DIR)/feed_handler_text.cpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp
+udp_mock_server: $(SRC_MOCK_SERVER)/udp_mock_server.cpp $(INCLUDE_DIR)/udp_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_MOCK_SERVER)/udp_mock_server.cpp -o $(BUILD_DIR)/udp_mock_server
+
+#=============================================================================
+# Feed handler binaries
+#=============================================================================
+
+feed_handler_spsc: $(SRC_FEED_HANDLER)/feed_handler_spsc.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_FEED_HANDLER)/feed_handler_spsc.cpp -o $(BUILD_DIR)/feed_handler_spsc
+
+feed_handler_spmc: $(SRC_FEED_HANDLER)/feed_handler_spmc.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_FEED_HANDLER)/feed_handler_spmc.cpp -o $(BUILD_DIR)/feed_handler_spmc
+
+feed_handler_heartbeat: $(SRC_FEED_HANDLER)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_FEED_HANDLER)/feed_handler_heartbeat.cpp -o $(BUILD_DIR)/feed_handler_heartbeat
+
+feed_handler_snapshot: $(SRC_FEED_HANDLER)/feed_handler_snapshot.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/connection_manager.hpp $(INCLUDE_DIR)/order_book.hpp $(INCLUDE_DIR)/sequence_tracker.hpp $(INCLUDE_DIR)/ring_buffer.hpp
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_FEED_HANDLER)/feed_handler_snapshot.cpp -o $(BUILD_DIR)/feed_handler_snapshot
+
+feed_handler_text: $(BUILD_DIR) $(SRC_FEED_HANDLER)/feed_handler_text.cpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp
 	@echo "Building text feed handler..."
-	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_text.cpp -o $(BUILD_DIR)/feed_handler_text
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_FEED_HANDLER)/feed_handler_text.cpp -o $(BUILD_DIR)/feed_handler_text
+
+udp_feed_handler: $(SRC_FEED_HANDLER)/udp_feed_handler.cpp $(INCLUDE_DIR)/udp_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 $(INCLUDES) $(SRC_FEED_HANDLER)/udp_feed_handler.cpp -o $(BUILD_DIR)/udp_feed_handler
 
 # Unified feed handler with CLI interface (uses consolidated net/feed.hpp)
-feed_handler: $(BUILD_DIR) $(SRC_DIR)/feed_main.cpp $(INCLUDE_DIR)/cli_parser.hpp $(INCLUDE_DIR)/net/feed.hpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp $(INCLUDE_DIR)/order_book.hpp
+feed_handler: $(BUILD_DIR) $(SRC_FEED_HANDLER)/feed_main.cpp $(INCLUDE_DIR)/cli_parser.hpp $(INCLUDE_DIR)/net/feed.hpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp $(INCLUDE_DIR)/order_book.hpp
 	@echo "Building unified feed handler..."
-	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_main.cpp -o $(BUILD_DIR)/feed_handler
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_FEED_HANDLER)/feed_main.cpp -o $(BUILD_DIR)/feed_handler
+
+#=============================================================================
+# Benchmark binaries
+#=============================================================================
+
+socket_tuning_benchmark: $(SRC_BENCHMARK)/socket_tuning_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/socket_config.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(SRC_BENCHMARK)/socket_tuning_benchmark.cpp -o $(BUILD_DIR)/socket_tuning_benchmark
+
+tcp_vs_udp_benchmark: $(SRC_BENCHMARK)/tcp_vs_udp_benchmark.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/udp_protocol.hpp
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_BENCHMARK)/tcp_vs_udp_benchmark.cpp -o $(BUILD_DIR)/tcp_vs_udp_benchmark
+
+benchmark_pool_vs_malloc: $(SRC_BENCHMARK)/benchmark_pool_vs_malloc.cpp $(INCLUDE_DIR)/thread_local_pool.hpp
+	@echo "Building memory pool benchmark..."
+	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
+		$(SRC_BENCHMARK)/benchmark_pool_vs_malloc.cpp \
+		-o $(BUILD_DIR)/benchmark_pool_vs_malloc
+
+false_sharing_demo: $(SRC_BENCHMARK)/false_sharing_demo.cpp
+	@echo "Building false sharing demonstration..."
+	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
+		$(SRC_BENCHMARK)/false_sharing_demo.cpp \
+		-o $(BUILD_DIR)/false_sharing_demo
+
+benchmark_parsing_hotpath: $(BUILD_DIR) $(SRC_BENCHMARK)/benchmark_parsing_hotpath.cpp $(INCLUDE_DIR)/binary_protocol.hpp
+	@echo "Building parsing hot path benchmark..."
+	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) $(INCLUDES) \
+		$(SRC_BENCHMARK)/benchmark_parsing_hotpath.cpp \
+		-o $(BUILD_DIR)/benchmark_parsing_hotpath
+
+#=============================================================================
+# Text Protocol test
+#=============================================================================
 
 # Run text protocol test
 test-text-protocol: text_mock_server feed_handler_text
@@ -138,10 +172,10 @@ test-text-protocol: text_mock_server feed_handler_text
 #=============================================================================
 
 # Baseline with profiling symbols (for perf/sample)
-feed_handler_heartbeat_profile: $(SRC_DIR)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/*.hpp
+feed_handler_heartbeat_profile: $(SRC_FEED_HANDLER)/feed_handler_heartbeat.cpp $(INCLUDE_DIR)/*.hpp
 	@echo "Building baseline with profiling symbols..."
 	$(CXX) $(CXXFLAGS) $(PROFILE_FLAGS) -pthread $(INCLUDES) \
-		$(SRC_DIR)/feed_handler_heartbeat.cpp \
+		$(SRC_FEED_HANDLER)/feed_handler_heartbeat.cpp \
 		-o $(BUILD_DIR)/feed_handler_heartbeat_profile
 
 # Build profiling version for analysis
@@ -203,24 +237,10 @@ flamegraph-optimized:
 # Extension: Memory Pool & False Sharing
 #=============================================================================
 
-# Memory pool benchmark (pool vs malloc)
-benchmark_pool_vs_malloc: $(SRC_DIR)/benchmark_pool_vs_malloc.cpp $(INCLUDE_DIR)/thread_local_pool.hpp
-	@echo "Building memory pool benchmark..."
-	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
-		$(SRC_DIR)/benchmark_pool_vs_malloc.cpp \
-		-o $(BUILD_DIR)/benchmark_pool_vs_malloc
-
-# False sharing demonstration
-false_sharing_demo: $(SRC_DIR)/false_sharing_demo.cpp
-	@echo "Building false sharing demonstration..."
-	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) -pthread $(INCLUDES) \
-		$(SRC_DIR)/false_sharing_demo.cpp \
-		-o $(BUILD_DIR)/false_sharing_demo
-
 # Build all memory pool extension components
 memory-pool-extension: $(BUILD_DIR) benchmark_pool_vs_malloc false_sharing_demo
 	@echo ""
-	@echo "✅ Memory Pool Extension builds complete!"
+	@echo "Memory Pool Extension builds complete!"
 	@echo ""
 	@echo "Run benchmarks:"
 	@echo "  ./$(BUILD_DIR)/benchmark_pool_vs_malloc 4 100000"
@@ -254,17 +274,10 @@ profile-pool-sample: benchmark_pool_vs_malloc
 # Extension: IPC & Cache Analysis
 #=============================================================================
 
-# Parsing hot path benchmark
-benchmark_parsing_hotpath: $(BUILD_DIR) $(SRC_DIR)/benchmark_parsing_hotpath.cpp $(INCLUDE_DIR)/binary_protocol.hpp
-	@echo "Building parsing hot path benchmark..."
-	$(CXX) $(CXXFLAGS) $(OPTIMIZE_FLAGS) $(INCLUDES) \
-		$(SRC_DIR)/benchmark_parsing_hotpath.cpp \
-		-o $(BUILD_DIR)/benchmark_parsing_hotpath
-
 # Build all IPC/cache analysis components
 ipc-cache-extension: $(BUILD_DIR) benchmark_parsing_hotpath
 	@echo ""
-	@echo "✅ IPC/Cache Analysis Extension built!"
+	@echo "IPC/Cache Analysis Extension built!"
 	@echo ""
 	@echo "Run benchmark:"
 	@echo "  ./$(BUILD_DIR)/benchmark_parsing_hotpath 10000000"
@@ -309,7 +322,7 @@ profile-ipc-instruments: benchmark_parsing_hotpath
 		-l 30 \
 		$(BUILD_DIR)/benchmark_parsing_hotpath 10000000 || true
 	@echo ""
-	@echo "✅ Profile complete!"
+	@echo "Profile complete!"
 	@echo "   Open: perf_counters/system_trace.trace"
 	@echo ""
 	@echo "In Instruments, check CPU Counters for:"
@@ -331,7 +344,7 @@ profile-ipc-sample: benchmark_parsing_hotpath
 # Build all extensions
 all-extensions: memory-pool-extension ipc-cache-extension
 	@echo ""
-	@echo "✅ All extensions built successfully!"
+	@echo "All extensions built successfully!"
 	@echo ""
 
 #=============================================================================
@@ -507,7 +520,7 @@ measure-false-sharing: $(BUILD_DIR) feed_handler_spmc binary_mock_server
 
 # Socket tuning benchmark
 socket-benchmark: $(BUILD_DIR) socket_tuning_benchmark binary_mock_server
-	./scripts/run_socket_benchmark.sh
+	./benchmarks/benchmark_socket.sh
 
 # Heartbeat and connection management
 heartbeat-benchmark: $(BUILD_DIR) feed_handler_heartbeat heartbeat_mock_server
@@ -536,7 +549,7 @@ udp-benchmark: $(BUILD_DIR) udp_mock_server udp_feed_handler
 
 tcp-vs-udp: $(BUILD_DIR) tcp_vs_udp_benchmark udp_mock_server udp_feed_handler binary_mock_server
 	@echo "TCP vs UDP comparison benchmark built!"
-	@echo "Run: ./scripts/run_tcp_vs_udp_benchmark.sh"
+	@echo "Run: ./benchmarks/benchmark_tcp_vs_udp.sh"
 
 #=============================================================================
 # Help
@@ -607,6 +620,12 @@ help:
 	@echo "Quick Start (Extensions):"
 	@echo "  Memory Pool:  make memory-pool-extension && make benchmark-pool"
 	@echo "  IPC/Cache:    make ipc-cache-extension && make benchmark-ipc"
+	@echo ""
+	@echo "Source Directory Structure:"
+	@echo "  src/feed_handler/  - Feed handler implementations"
+	@echo "  src/mock_server/   - Mock server implementations"
+	@echo "  src/client/        - Client implementations"
+	@echo "  src/benchmark/     - Benchmark implementations"
 	@echo ""
 
 .PHONY: all clean tests run-tests run-tests-verbose run-test run-test-filter \

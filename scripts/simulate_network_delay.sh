@@ -49,7 +49,7 @@ if [ $? -eq 0 ]; then
     echo "✅ Network delay added successfully"
     echo ""
     echo "Run your benchmark now:"
-    echo "  ./scripts/run_socket_benchmark.sh"
+    echo "  ./benchmarks/benchmark_socket.sh"
     echo ""
     echo "When done, remove the delay with:"
     echo "  sudo tc qdisc del dev lo root"
