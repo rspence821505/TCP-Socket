@@ -420,22 +420,81 @@ inline Result<int> socket_connect(const std::string &host, int port,
     }
   }
 
-  // Connect
-  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-      0) {
-    std::string err =
-        "connection failed to " + host + ":" + std::to_string(port) + ": " + strerror(errno);
-    close(sockfd);
-    return Result<int>::error(err);
-  }
-
-  // Set non-blocking after connect if requested
-  if (opts.non_blocking) {
+  // Connect with optional timeout
+  if (opts.connect_timeout_ms > 0) {
+    // Set non-blocking for connect with timeout
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
       close(sockfd);
       return Result<int>::error(
           std::string("fcntl non-blocking failed: ") + strerror(errno));
+    }
+
+    int connect_result =
+        connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+    if (connect_result < 0 && errno == EINPROGRESS) {
+      // Wait for connection with timeout using select
+      fd_set write_fds;
+      FD_ZERO(&write_fds);
+      FD_SET(sockfd, &write_fds);
+
+      struct timeval tv;
+      tv.tv_sec = opts.connect_timeout_ms / 1000;
+      tv.tv_usec = (opts.connect_timeout_ms % 1000) * 1000;
+
+      int select_result =
+          select(sockfd + 1, nullptr, &write_fds, nullptr, &tv);
+
+      if (select_result <= 0) {
+        close(sockfd);
+        if (select_result == 0) {
+          return Result<int>::error("connection timeout to " + host + ":" +
+                                    std::to_string(port));
+        }
+        return Result<int>::error(std::string("select failed: ") +
+                                  strerror(errno));
+      }
+
+      // Check if connection was successful
+      int error = 0;
+      socklen_t len = sizeof(error);
+      if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &error, &len) < 0 ||
+          error != 0) {
+        close(sockfd);
+        return Result<int>::error("connection failed to " + host + ":" +
+                                  std::to_string(port) + ": " +
+                                  strerror(error ? error : errno));
+      }
+    } else if (connect_result < 0) {
+      std::string err = "connection failed to " + host + ":" +
+                        std::to_string(port) + ": " + strerror(errno);
+      close(sockfd);
+      return Result<int>::error(err);
+    }
+
+    // Set back to blocking mode unless non_blocking was requested
+    if (!opts.non_blocking) {
+      fcntl(sockfd, F_SETFL, flags);
+    }
+  } else {
+    // Simple blocking connect
+    if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
+        0) {
+      std::string err = "connection failed to " + host + ":" +
+                        std::to_string(port) + ": " + strerror(errno);
+      close(sockfd);
+      return Result<int>::error(err);
+    }
+
+    // Set non-blocking after connect if requested
+    if (opts.non_blocking) {
+      int flags = fcntl(sockfd, F_GETFL, 0);
+      if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        close(sockfd);
+        return Result<int>::error(
+            std::string("fcntl non-blocking failed: ") + strerror(errno));
+      }
     }
   }
 

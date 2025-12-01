@@ -37,13 +37,7 @@ struct Connection {
 };
 
 void process_message(const BinaryTick &tick, Connection &conn) {
-  // Convert symbol to string (handle null padding)
-  std::string symbol(tick.symbol, 4);
-  // Remove null padding for display
-  size_t null_pos = symbol.find('\0');
-  if (null_pos != std::string::npos) {
-    symbol = symbol.substr(0, null_pos);
-  }
+  std::string symbol = trim_symbol(tick.symbol, 4);
 
   std::cout << "[Exchange " << conn.port << "] [" << symbol << "] $"
             << tick.price << " @ " << tick.volume << std::endl;
@@ -51,18 +45,17 @@ void process_message(const BinaryTick &tick, Connection &conn) {
   conn.message_count++;
 }
 
-int connect_to_exchange(int port) {
+Result<int> connect_to_exchange(int port) {
   SocketOptions opts;
   opts.non_blocking = true;
 
   auto result = socket_connect("127.0.0.1", port, opts);
   if (!result) {
-    LOG_ERROR("Client", "%s", result.error().c_str());
-    return -1;
+    return Result<int>::error(result.error());
   }
 
   std::cout << "Connected to exchange on port " << port << std::endl;
-  return result.value();
+  return result;
 }
 
 bool drain_socket(Connection &conn) {
@@ -149,10 +142,12 @@ int main() {
   std::map<int, Connection> connections; // Map fd -> Connection
 
   for (int port : ports) {
-    int sockfd = connect_to_exchange(port);
-    if (sockfd < 0) {
+    auto connect_result = connect_to_exchange(port);
+    if (!connect_result) {
+      LOG_ERROR("Client", "%s", connect_result.error().c_str());
       continue; // Skip failed connections
     }
+    int sockfd = connect_result.value();
 
     // Register with event mechanism
 #ifdef USE_EPOLL

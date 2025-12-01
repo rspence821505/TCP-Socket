@@ -303,8 +303,8 @@ TEST_F(QueueBackpressureTest, BackpressureLatencyMeasurement) {
   uint64_t end_full = now_ns();
   uint64_t full_latency = (end_full - start_full) / 100;
 
-  std::cout << "  Empty queue push/pop latency: " << empty_latency << " ns" << std::endl;
-  std::cout << "  Near-full queue push/pop latency: " << full_latency << " ns" << std::endl;
+  std::cout << "  Empty queue push/pop latency: " << format_duration_ns(empty_latency) << std::endl;
+  std::cout << "  Near-full queue push/pop latency: " << format_duration_ns(full_latency) << std::endl;
 
   // Both should be fast (lock-free)
   EXPECT_LT(empty_latency, 10000) << "Empty queue latency too high";

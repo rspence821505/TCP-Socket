@@ -56,20 +56,18 @@ public:
     symbols_ = {"AAPL", "MSFT", "GOOG", "AMZN", "TSLA", "META", "NVDA", "JPM "};
   }
   
-  bool start() {
+  Result<void> start() {
     // Create UDP socket
     udp_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_fd_ < 0) {
-      LOG_PERROR("Server", "UDP socket creation failed");
-      return false;
+      return Result<void>::error("UDP socket creation failed: " + std::string(strerror(errno)));
     }
 
     // Create TCP control socket
     tcp_control_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (tcp_control_fd_ < 0) {
-      LOG_PERROR("Server", "TCP socket creation failed");
       close(udp_fd_);
-      return false;
+      return Result<void>::error("TCP socket creation failed: " + std::string(strerror(errno)));
     }
 
     // Set TCP socket to reuse address
@@ -84,17 +82,15 @@ public:
     tcp_addr.sin_port = htons(tcp_port_);
 
     if (bind(tcp_control_fd_, (struct sockaddr*)&tcp_addr, sizeof(tcp_addr)) < 0) {
-      LOG_PERROR("Server", "TCP bind failed");
       close(udp_fd_);
       close(tcp_control_fd_);
-      return false;
+      return Result<void>::error("TCP bind failed: " + std::string(strerror(errno)));
     }
 
     if (listen(tcp_control_fd_, 5) < 0) {
-      LOG_PERROR("Server", "TCP listen failed");
       close(udp_fd_);
       close(tcp_control_fd_);
-      return false;
+      return Result<void>::error("TCP listen failed: " + std::string(strerror(errno)));
     }
 
     LOG_INFO("Server", "UDP Mock Server started");
@@ -106,7 +102,7 @@ public:
                loss_config_.burst_size, loss_config_.burst_probability * 100.0);
     }
 
-    return true;
+    return Result<void>();
   }
   
   void run() {
@@ -321,10 +317,12 @@ int main(int argc, char* argv[]) {
   
   UDPMockServer server(udp_port, tcp_port, loss_config);
   
-  if (!server.start()) {
+  auto start_result = server.start();
+  if (!start_result) {
+    LOG_ERROR("Server", "%s", start_result.error().c_str());
     return 1;
   }
-  
+
   server.run();
 
   LOG_INFO("Server", "Server shutting down...");

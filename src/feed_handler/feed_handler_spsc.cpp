@@ -84,8 +84,8 @@ public:
       parse_and_enqueue();
     }
 
-    LOG_INFO("Reader", "Thread exiting. Parsed %lu messages (%.2f MB)",
-             messages_parsed_, bytes_received_ / 1024.0 / 1024.0);
+    LOG_INFO("Reader", "Thread exiting. Parsed %lu messages (%s)",
+             messages_parsed_, format_bytes(bytes_received_).c_str());
   }
 
   uint64_t get_message_count() const { return messages_parsed_; }
@@ -209,11 +209,7 @@ public:
 
         // Process the message (just print periodically to avoid spam)
         if (messages_processed_ % 10000 == 0) {
-          std::string symbol(msg->tick.symbol, 4);
-          size_t null_pos = symbol.find('\0');
-          if (null_pos != std::string::npos) {
-            symbol = symbol.substr(0, null_pos);
-          }
+          std::string symbol = trim_symbol(msg->tick.symbol, 4);
           LOG_INFO("Consumer", "[%s] $%.2f @ %d", symbol.c_str(), msg->tick.price, msg->tick.volume);
         }
 
@@ -235,18 +231,17 @@ public:
   uint64_t get_message_count() const { return messages_processed_; }
 };
 
-int connect_to_exchange(const std::string &host, int port) {
+Result<int> connect_to_exchange(const std::string &host, int port) {
   SocketOptions opts;
   opts.non_blocking = true;
 
   auto result = socket_connect(host, port, opts);
   if (!result) {
-    LOG_ERROR("Connect", "%s", result.error().c_str());
-    return -1;
+    return Result<int>::error(result.error());
   }
 
   LOG_INFO("Connect", "Connected to %s:%d", host.c_str(), port);
-  return result.value();
+  return result;
 }
 
 int main(int argc, char *argv[]) {
@@ -265,10 +260,12 @@ int main(int argc, char *argv[]) {
   std::cout << "Queue capacity: " << queue_size << std::endl;
 
   // Connect to exchange
-  int sockfd = connect_to_exchange(host, port);
-  if (sockfd < 0) {
+  auto connect_result = connect_to_exchange(host, port);
+  if (!connect_result) {
+    LOG_ERROR("Main", "%s", connect_result.error().c_str());
     return 1;
   }
+  int sockfd = connect_result.value();
 
   // Create shared state
   SPSCQueue<TimedMessage> queue(queue_size);

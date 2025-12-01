@@ -81,12 +81,11 @@ public:
     stop();
   }
   
-  bool start() {
+  Result<void> start() {
     // Create UDP socket
     udp_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_fd_ < 0) {
-      LOG_PERROR("UDPFeed", "UDP socket creation failed");
-      return false;
+      return Result<void>::error("UDP socket creation failed: " + std::string(strerror(errno)));
     }
 
     // Bind UDP socket to receive on specific port
@@ -97,9 +96,8 @@ public:
     udp_addr.sin_port = htons(udp_port_);
 
     if (bind(udp_fd_, (struct sockaddr*)&udp_addr, sizeof(udp_addr)) < 0) {
-      LOG_PERROR("UDPFeed", "UDP bind failed");
       close(udp_fd_);
-      return false;
+      return Result<void>::error("UDP bind failed: " + std::string(strerror(errno)));
     }
 
     // Set UDP socket to non-blocking
@@ -112,9 +110,8 @@ public:
 
     auto tcp_result = socket_connect(host_, tcp_port_, tcp_opts);
     if (!tcp_result) {
-      LOG_ERROR("UDPFeed", "TCP connection failed: %s", tcp_result.error().c_str());
       close(udp_fd_);
-      return false;
+      return Result<void>::error("TCP connection failed: " + tcp_result.error());
     }
     tcp_fd_ = tcp_result.value();
 
@@ -122,7 +119,7 @@ public:
     LOG_INFO("UDPFeed", "  UDP feed: %s:%d", host_.c_str(), udp_port_);
     LOG_INFO("UDPFeed", "  TCP control: %s:%d", host_.c_str(), tcp_port_);
 
-    return true;
+    return Result<void>();
   }
   
   void run(std::chrono::seconds duration) {
@@ -235,11 +232,7 @@ private:
         
         // Print periodically
         if (stats_.messages_received % 10000 == 0) {
-          std::string symbol(tick.symbol, 4);
-          size_t null_pos = symbol.find('\0');
-          if (null_pos != std::string::npos) {
-            symbol = symbol.substr(0, null_pos);
-          }
+          std::string symbol = trim_symbol(tick.symbol, 4);
 
           LOG_INFO("UDP", "seq=%lu [%s] $%.2f @ %d | Active gaps: %zu",
                    header.sequence, symbol.c_str(), tick.price, tick.volume, gap_tracker_.active_gaps());
@@ -368,10 +361,12 @@ int main(int argc, char* argv[]) {
   
   UDPFeedHandler handler(host, udp_port, tcp_port);
   
-  if (!handler.start()) {
+  auto start_result = handler.start();
+  if (!start_result) {
+    LOG_ERROR("Main", "%s", start_result.error().c_str());
     return 1;
   }
-  
+
   handler.run(std::chrono::seconds(duration_seconds));
   
   return 0;

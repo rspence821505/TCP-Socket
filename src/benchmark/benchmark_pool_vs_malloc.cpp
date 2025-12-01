@@ -190,8 +190,8 @@ void print_results(const std::string& test_name, const BenchmarkResults& results
   std::cout << "Pool time:         " << results.pool_time_ns << " ns/allocation\n";
   std::cout << "Malloc time:       " << results.malloc_time_ns << " ns/allocation\n";
   std::cout << "Speedup:           " << results.speedup << "x\n";
-  std::cout << "Pool memory:       " << results.memory_used_pool << " bytes\n";
-  std::cout << "Malloc memory:     " << results.memory_used_malloc << " bytes (estimated)\n";
+  std::cout << "Pool memory:       " << format_bytes(results.memory_used_pool) << "\n";
+  std::cout << "Malloc memory:     " << format_bytes(results.memory_used_malloc) << " (estimated)\n";
   std::cout << "Pool utilization:  " << results.pool_utilization << "%\n";
 }
 

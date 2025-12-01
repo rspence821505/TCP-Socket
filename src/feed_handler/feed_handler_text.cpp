@@ -164,7 +164,7 @@ private:
   LatencyStats total_latency_;
 };
 
-int connect_to_server(const char* host, int port) {
+Result<int> connect_to_server(const char* host, int port) {
   SocketOptions opts;
   opts.tcp_nodelay = true;
   opts.recv_buffer_size = 256 * 1024;
@@ -173,12 +173,11 @@ int connect_to_server(const char* host, int port) {
 
   auto result = socket_connect(host, port, opts);
   if (!result) {
-    LOG_ERROR("Connect", "%s", result.error().c_str());
-    return -1;
+    return Result<int>::error(result.error());
   }
 
   LOG_INFO("Connect", "Connected!");
-  return result.value();
+  return result;
 }
 
 int main(int argc, char* argv[]) {
@@ -193,10 +192,12 @@ int main(int argc, char* argv[]) {
   const char* host = (argc > 2) ? argv[2] : "127.0.0.1";
 
   // Connect to server
-  int sockfd = connect_to_server(host, port);
-  if (sockfd < 0) {
+  auto connect_result = connect_to_server(host, port);
+  if (!connect_result) {
+    LOG_ERROR("Main", "%s", connect_result.error().c_str());
     return 1;
   }
+  int sockfd = connect_result.value();
 
   // Create queue and control flag
   SPSCQueue<TimedTextTick> queue(1024 * 1024);  // 1M capacity

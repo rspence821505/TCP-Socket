@@ -197,8 +197,8 @@ void print_result(const std::string& name, const BaselineParsingResult& result) 
             << result.time_ms << " ms" << std::endl;
   std::cout << "  Ticks/sec:         " << std::fixed << std::setprecision(2)
             << result.ticks_per_second / 1'000'000.0 << " M" << std::endl;
-  std::cout << "  ns/tick:           " << std::fixed << std::setprecision(2)
-            << result.ns_per_tick << " ns" << std::endl;
+  std::cout << "  ns/tick:           "
+            << format_duration_ns(static_cast<uint64_t>(result.ns_per_tick)) << std::endl;
   std::cout << std::endl;
 }
 
@@ -209,8 +209,8 @@ void print_result_optimized(const std::string& name, const OptimizedParsingResul
             << result.time_ms << " ms" << std::endl;
   std::cout << "  Ticks/sec:         " << std::fixed << std::setprecision(2)
             << result.ticks_per_second / 1'000'000.0 << " M" << std::endl;
-  std::cout << "  ns/tick:           " << std::fixed << std::setprecision(2)
-            << result.ns_per_tick << " ns" << std::endl;
+  std::cout << "  ns/tick:           "
+            << format_duration_ns(static_cast<uint64_t>(result.ns_per_tick)) << std::endl;
   std::cout << std::endl;
 }
 
@@ -267,8 +267,8 @@ int main(int argc, char* argv[]) {
   std::cout << std::fixed << std::setprecision(2);
   std::cout << "Speedup:           " << speedup << "x" << std::endl;
   std::cout << "Improvement:       " << improvement << "%" << std::endl;
-  std::cout << "ns/tick:           " << baseline.ns_per_tick << " -> "
-            << optimized.ns_per_tick << " ns" << std::endl;
+  std::cout << "ns/tick:           " << format_duration_ns(static_cast<uint64_t>(baseline.ns_per_tick)) << " -> "
+            << format_duration_ns(static_cast<uint64_t>(optimized.ns_per_tick)) << std::endl;
   std::cout << std::endl;
 
   // Guidance for profiling

@@ -127,85 +127,26 @@ public:
   ~Connection() { disconnect(); }
 
   bool connect() {
-    sockfd_ = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd_ < 0) {
-      if (verbose_) perror("socket");
-      return false;
-    }
-
-    // Enable TCP_NODELAY
-    int flag = 1;
-    setsockopt(sockfd_, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
-
-    // Set receive buffer size
-    int rcvbuf = 256 * 1024;
-    setsockopt(sockfd_, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
-
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port_);
-
-    if (inet_pton(AF_INET, host_.c_str(), &server_addr.sin_addr) <= 0) {
-      server_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    }
-
     if (verbose_) {
       std::cout << "[Connection] Connecting to " << host_ << ":" << port_ << "...\n";
     }
 
-    // Set non-blocking for connect with timeout
-    int flags = fcntl(sockfd_, F_GETFL, 0);
-    fcntl(sockfd_, F_SETFL, flags | O_NONBLOCK);
+    SocketOptions opts;
+    opts.tcp_nodelay = true;
+    opts.recv_buffer_size = 256 * 1024;
+    opts.connect_timeout_ms = connect_timeout_sec_ * 1000;
+    opts.non_blocking = false;  // Keep blocking mode after connect
 
-    int connect_result = ::connect(sockfd_, (struct sockaddr*)&server_addr, sizeof(server_addr));
-
-    if (connect_result < 0 && errno == EINPROGRESS) {
-      // Wait for connection with timeout
-      fd_set write_fds;
-      FD_ZERO(&write_fds);
-      FD_SET(sockfd_, &write_fds);
-
-      struct timeval tv;
-      tv.tv_sec = connect_timeout_sec_;
-      tv.tv_usec = 0;
-
-      int select_result = select(sockfd_ + 1, nullptr, &write_fds, nullptr, &tv);
-
-      if (select_result <= 0) {
-        if (verbose_) {
-          if (select_result == 0) {
-            std::cerr << "[Connection] Connect timeout\n";
-          } else {
-            perror("[Connection] select");
-          }
-        }
-        close(sockfd_);
-        sockfd_ = -1;
-        return false;
+    auto result = socket_connect(host_, port_, opts);
+    if (!result) {
+      if (verbose_) {
+        std::cerr << "[Connection] " << result.error() << "\n";
       }
-
-      // Check if connection was successful
-      int error = 0;
-      socklen_t len = sizeof(error);
-      if (getsockopt(sockfd_, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-        if (verbose_) {
-          std::cerr << "[Connection] Connect failed: " << strerror(error) << "\n";
-        }
-        close(sockfd_);
-        sockfd_ = -1;
-        return false;
-      }
-    } else if (connect_result < 0) {
-      if (verbose_) perror("connect");
-      close(sockfd_);
       sockfd_ = -1;
       return false;
     }
 
-    // Set back to blocking mode
-    fcntl(sockfd_, F_SETFL, flags);
-
+    sockfd_ = result.value();
     if (verbose_) {
       std::cout << "[Connection] Connected!\n";
     }

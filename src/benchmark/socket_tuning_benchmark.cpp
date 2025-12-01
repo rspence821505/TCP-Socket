@@ -19,8 +19,8 @@
 using BenchmarkLatencyStats = LatencyStats;
 
 // Connect to server with specific socket configuration
-int connect_with_config(const std::string &host, int port,
-                        const SocketConfig &config, bool verbose = true) {
+Result<int> connect_with_config(const std::string &host, int port,
+                                const SocketConfig &config, bool verbose = true) {
   // Map SocketConfig to SocketOptions
   SocketOptions opts;
   opts.tcp_nodelay = config.tcp_nodelay;
@@ -30,8 +30,7 @@ int connect_with_config(const std::string &host, int port,
 
   auto result = socket_connect(host, port, opts);
   if (!result) {
-    LOG_ERROR("Benchmark", "%s", result.error().c_str());
-    return -1;
+    return Result<int>::error(result.error());
   }
   int sockfd = result.value();
 
@@ -45,18 +44,18 @@ int connect_with_config(const std::string &host, int port,
 
   if (verbose) {
     if (opts.tcp_nodelay) {
-      std::cout << "  ✓ TCP_NODELAY enabled" << std::endl;
+      std::cout << "  TCP_NODELAY enabled" << std::endl;
     }
     if (opts.recv_buffer_size > 0) {
-      std::cout << "  ✓ SO_RCVBUF set" << std::endl;
+      std::cout << "  SO_RCVBUF set" << std::endl;
     }
     if (opts.send_buffer_size > 0) {
-      std::cout << "  ✓ SO_SNDBUF set" << std::endl;
+      std::cout << "  SO_SNDBUF set" << std::endl;
     }
-    std::cout << "  ✓ Connected to " << host << ":" << port << std::endl;
+    std::cout << "  Connected to " << host << ":" << port << std::endl;
   }
 
-  return sockfd;
+  return Result<int>(sockfd);
 }
 
 // Run benchmark with specific socket configuration
@@ -71,10 +70,12 @@ BenchmarkLatencyStats run_benchmark(const std::string &host, int port,
   stats.reserve(num_messages);
 
   // Connect to server
-  int sockfd = connect_with_config(host, port, config, verbose);
-  if (sockfd < 0) {
+  auto connect_result = connect_with_config(host, port, config, verbose);
+  if (!connect_result) {
+    LOG_ERROR("Benchmark", "%s", connect_result.error().c_str());
     return stats;
   }
+  int sockfd = connect_result.value();
 
   // Receive buffer for message reassembly
   std::vector<char> buffer;

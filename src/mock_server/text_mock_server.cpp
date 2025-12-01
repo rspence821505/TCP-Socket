@@ -43,11 +43,10 @@ public:
     }
   }
 
-  bool start() {
+  Result<void> start() {
     server_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd_ < 0) {
-      LOG_PERROR("Server", "socket");
-      return false;
+      return Result<void>::error("socket creation failed: " + std::string(strerror(errno)));
     }
 
     int opt = 1;
@@ -60,20 +59,20 @@ public:
     addr.sin_port = htons(port_);
 
     if (bind(server_fd_, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-      LOG_PERROR("Server", "bind");
-      return false;
+      close(server_fd_);
+      return Result<void>::error("bind failed: " + std::string(strerror(errno)));
     }
 
     if (listen(server_fd_, 5) < 0) {
-      LOG_PERROR("Server", "listen");
-      return false;
+      close(server_fd_);
+      return Result<void>::error("listen failed: " + std::string(strerror(errno)));
     }
 
     LOG_INFO("Server", "Text Mock Server listening on port %d", port_);
     LOG_INFO("Server", "Sending %d msgs/sec for %d seconds", msgs_per_sec_, duration_sec_);
     LOG_INFO("Server", "Format: timestamp symbol price volume\\n");
 
-    return true;
+    return Result<void>();
   }
 
   void run() {
@@ -205,7 +204,9 @@ int main(int argc, char* argv[]) {
 
   TextMockServer server(port, msgs_per_sec, duration_sec);
 
-  if (!server.start()) {
+  auto start_result = server.start();
+  if (!start_result) {
+    LOG_ERROR("Server", "%s", start_result.error().c_str());
     return 1;
   }
 

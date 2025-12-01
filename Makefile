@@ -42,8 +42,8 @@ BINARIES = binary_client binary_client_zerocopy binary_mock_server mock_server \
            text_mock_server feed_handler_text feed_handler \
            benchmark_pool_vs_malloc false_sharing_demo benchmark_parsing_hotpath
 
-TEST_BINARIES = test_spsc_queue test_text_protocol test_binary_protocol test_order_book test_ring_buffer test_malformed_input test_stress test_sequence_tracker test_common
-INTEGRATION_TEST_BINARIES = test_integration
+TEST_BINARIES = test_spsc_queue test_text_protocol test_binary_protocol test_order_book test_ring_buffer test_malformed_input test_stress test_sequence_tracker test_common test_feed_handler
+INTEGRATION_TEST_BINARIES = test_integration test_snapshot_recovery test_comparison
 
 # Default target
 all: $(BUILD_DIR) $(BINARIES)
@@ -416,12 +416,33 @@ $(BUILD_DIR)/test_common: $(TESTS_DIR)/test_common.cpp $(INCLUDE_DIR)/common.hpp
 		$(TESTS_DIR)/test_common.cpp \
 		$(GTEST_LIBS) -o $(BUILD_DIR)/test_common
 
+# Feed Handler SPSC Queue tests
+$(BUILD_DIR)/test_feed_handler: $(TESTS_DIR)/test_feed_handler.cpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/common.hpp $(INCLUDE_DIR)/ring_buffer.hpp $(INCLUDE_DIR)/spsc_queue.hpp
+	@echo "Building test_feed_handler..."
+	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_feed_handler.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_feed_handler
+
 # Integration tests (server/client communication tests)
 $(BUILD_DIR)/test_integration: $(TESTS_DIR)/test_integration.cpp
 	@echo "Building test_integration..."
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
 		$(TESTS_DIR)/test_integration.cpp \
 		$(GTEST_LIBS) -o $(BUILD_DIR)/test_integration
+
+# Snapshot Recovery integration tests
+$(BUILD_DIR)/test_snapshot_recovery: $(TESTS_DIR)/test_snapshot_recovery.cpp
+	@echo "Building test_snapshot_recovery..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_snapshot_recovery.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_snapshot_recovery
+
+# Zero-Copy Ring Buffer Comparison integration tests
+$(BUILD_DIR)/test_comparison: $(TESTS_DIR)/test_comparison.cpp
+	@echo "Building test_comparison..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(GTEST_INCLUDES) \
+		$(TESTS_DIR)/test_comparison.cpp \
+		$(GTEST_LIBS) -o $(BUILD_DIR)/test_comparison
 
 # Build integration tests (requires binaries to be built first)
 integration-tests: $(BUILD_DIR) all $(addprefix $(BUILD_DIR)/,$(INTEGRATION_TEST_BINARIES))
@@ -506,8 +527,8 @@ clean:
 benchmark: all
 	./benchmarks/benchmark_zerocopy.sh
 
-comparison: all
-	./scripts/test_comparison.sh
+comparison: all $(BUILD_DIR)/test_comparison
+	./$(BUILD_DIR)/test_comparison --gtest_color=yes
 
 feed-handler: $(BUILD_DIR) feed_handler_spsc binary_mock_server
 	./scripts/test_feed_handler.sh
@@ -585,6 +606,8 @@ help:
 	@echo ""
 	@echo "Available integration tests:"
 	@echo "  test_integration          - Server/client communication tests"
+	@echo "  test_snapshot_recovery    - Snapshot recovery state machine tests"
+	@echo "  test_comparison           - Zero-copy ring buffer comparison tests"
 	@echo ""
 	@echo "Profiling Targets:"
 	@echo "  make profile              - Run full profiling analysis"

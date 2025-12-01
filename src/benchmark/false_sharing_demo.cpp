@@ -146,15 +146,15 @@ int main(int argc, char* argv[]) {
   std::cout << "Configuration:\n";
   std::cout << "  Iterations per thread: " << iterations << "\n";
   std::cout << "  Number of threads:     " << num_threads << "\n";
-  std::cout << "  Cache line size:       " << CACHE_LINE_SIZE << " bytes\n";
+  std::cout << "  Cache line size:       " << format_bytes(CACHE_LINE_SIZE) << "\n";
   std::cout << "\n";
 
   // Show struct sizes
   std::cout << "Data Structure Sizes:\n";
-  std::cout << "  PackedCounters:  " << sizeof(PackedCounters) << " bytes ";
-  std::cout << "(all counters in ~1 cache line)\n";
-  std::cout << "  PaddedCounters:  " << sizeof(PaddedCounters) << " bytes ";
-  std::cout << "(each counter in separate cache line)\n";
+  std::cout << "  PackedCounters:  " << format_bytes(sizeof(PackedCounters));
+  std::cout << " (all counters in ~1 cache line)\n";
+  std::cout << "  PaddedCounters:  " << format_bytes(sizeof(PaddedCounters));
+  std::cout << " (each counter in separate cache line)\n";
   std::cout << "\n";
 
   // Warmup

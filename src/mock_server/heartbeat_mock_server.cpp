@@ -39,18 +39,16 @@ public:
     symbols = {"AAPL", "MSFT", "GOOG", "AMZN", "TSLA", "META", "NVDA", "JPM "};
   }
 
-  bool start() {
+  Result<void> start() {
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-      LOG_PERROR("Server", "socket creation failed");
-      return false;
+      return Result<void>::error("socket creation failed: " + std::string(strerror(errno)));
     }
 
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-      LOG_PERROR("Server", "setsockopt failed");
       close(server_fd);
-      return false;
+      return Result<void>::error("setsockopt failed: " + std::string(strerror(errno)));
     }
 
     struct sockaddr_in server_addr;
@@ -60,21 +58,19 @@ public:
     server_addr.sin_port = htons(port);
 
     if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-      LOG_PERROR("Server", "bind failed");
       close(server_fd);
-      return false;
+      return Result<void>::error("bind failed: " + std::string(strerror(errno)));
     }
 
     if (listen(server_fd, 5) < 0) {
-      LOG_PERROR("Server", "listen failed");
       close(server_fd);
-      return false;
+      return Result<void>::error("listen failed: " + std::string(strerror(errno)));
     }
 
     LOG_INFO("Server", "Heartbeat mock server listening on port %d", port);
     LOG_INFO("Server", "  Heartbeat interval: %dms", heartbeat_interval_ms_);
     LOG_INFO("Server", "  Messages per heartbeat: %d", messages_per_heartbeat_);
-    return true;
+    return Result<void>();
   }
 
   void run() {
@@ -235,7 +231,9 @@ int main(int argc, char* argv[]) {
 
   HeartbeatMockServer server(port, heartbeat_interval_ms, messages_per_heartbeat);
 
-  if (!server.start()) {
+  auto start_result = server.start();
+  if (!start_result) {
+    LOG_ERROR("Server", "%s", start_result.error().c_str());
     return 1;
   }
 

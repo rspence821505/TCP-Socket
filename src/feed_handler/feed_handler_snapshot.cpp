@@ -228,11 +228,7 @@ private:
 
     // Print periodically
     if (stats_.ticks_received % 10000 == 0) {
-      std::string symbol(tick.symbol, 4);
-      size_t null_pos = symbol.find('\0');
-      if (null_pos != std::string::npos) {
-        symbol = symbol.substr(0, null_pos);
-      }
+      std::string symbol = trim_symbol(tick.symbol, 4);
 
       LOG_INFO("Tick", "seq=%lu [%s] $%.2f @ %d", header.sequence, symbol.c_str(), tick.price, tick.volume);
     }
@@ -256,11 +252,7 @@ private:
 
     stats_.snapshots_received++;
 
-    std::string symbol_str(symbol, 4);
-    size_t null_pos = symbol_str.find('\0');
-    if (null_pos != std::string::npos) {
-      symbol_str = symbol_str.substr(0, null_pos);
-    }
+    std::string symbol_str = trim_symbol(symbol, 4);
 
     LOG_INFO("Snapshot", "seq=%lu Received snapshot for %s", header.sequence, symbol_str.c_str());
     LOG_INFO("Snapshot", "  Bid levels: %zu", bids.size());
@@ -293,11 +285,7 @@ private:
 
     stats_.incremental_updates++;
 
-    std::string symbol_str(update.symbol, 4);
-    size_t null_pos = symbol_str.find('\0');
-    if (null_pos != std::string::npos) {
-      symbol_str = symbol_str.substr(0, null_pos);
-    }
+    std::string symbol_str = trim_symbol(update.symbol, 4);
 
     // Apply update to order book
     order_book_.apply_update(update.side, update.price, update.quantity);

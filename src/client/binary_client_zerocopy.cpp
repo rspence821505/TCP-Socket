@@ -42,13 +42,7 @@ struct Connection {
 };
 
 void process_message(const BinaryTick &tick, Connection &conn) {
-  // Convert symbol to string (handle null padding)
-  std::string symbol(tick.symbol, 4);
-  // Remove null padding for display
-  size_t null_pos = symbol.find('\0');
-  if (null_pos != std::string::npos) {
-    symbol = symbol.substr(0, null_pos);
-  }
+  std::string symbol = trim_symbol(tick.symbol, 4);
 
   std::cout << "[Exchange " << conn.port << "] [" << symbol << "] $"
             << tick.price << " @ " << tick.volume << std::endl;
@@ -56,18 +50,17 @@ void process_message(const BinaryTick &tick, Connection &conn) {
   conn.message_count++;
 }
 
-int connect_to_exchange(int port) {
+Result<int> connect_to_exchange(int port) {
   SocketOptions opts;
   opts.non_blocking = true;
 
   auto result = socket_connect("127.0.0.1", port, opts);
   if (!result) {
-    LOG_ERROR("Client", "%s", result.error().c_str());
-    return -1;
+    return Result<int>::error(result.error());
   }
 
   std::cout << "Connected to exchange on port " << port << std::endl;
-  return result.value();
+  return result;
 }
 
 bool drain_socket(Connection &conn) {
@@ -173,10 +166,12 @@ int main() {
   std::map<int, Connection> connections; // Map fd -> Connection
 
   for (int port : ports) {
-    int sockfd = connect_to_exchange(port);
-    if (sockfd < 0) {
+    auto connect_result = connect_to_exchange(port);
+    if (!connect_result) {
+      LOG_ERROR("Client", "%s", connect_result.error().c_str());
       continue; // Skip failed connections
     }
+    int sockfd = connect_result.value();
 
     // Register with event mechanism
 #ifdef USE_EPOLL
@@ -291,8 +286,8 @@ int main() {
   // Add statistics from closed connections
   for (const auto &[port, count] : port_message_counts) {
     std::cout << "Exchange " << port << ": " << count << " messages, "
-              << (port_bytes_received[port] / 1024.0 / 1024.0)
-              << " MB received, " << port_buffer_shifts_avoided[port]
+              << format_bytes(port_bytes_received[port])
+              << " received, " << port_buffer_shifts_avoided[port]
               << " buffer shifts avoided" << std::endl;
     total_messages += count;
     total_bytes += port_bytes_received[port];
@@ -302,8 +297,8 @@ int main() {
   // Add statistics from still-active connections (if any)
   for (const auto &[fd, conn] : connections) {
     std::cout << "Exchange " << conn.port << ": " << conn.message_count
-              << " messages, " << (conn.bytes_received / 1024.0 / 1024.0)
-              << " MB received, " << conn.buffer_shifts_avoided
+              << " messages, " << format_bytes(conn.bytes_received)
+              << " received, " << conn.buffer_shifts_avoided
               << " buffer shifts avoided" << std::endl;
     total_messages += conn.message_count;
     total_bytes += conn.bytes_received;
@@ -313,8 +308,7 @@ int main() {
   std::cout << "\nTotal: " << total_messages << " messages in " << seconds
             << "s (" << static_cast<int>(total_messages / seconds)
             << " msgs/sec)" << std::endl;
-  std::cout << "Total data: " << (total_bytes / 1024.0 / 1024.0) << " MB"
-            << std::endl;
+  std::cout << "Total data: " << format_bytes(total_bytes) << std::endl;
   std::cout << "Zero-copy optimizations: " << total_shifts_avoided
             << " buffer shifts avoided" << std::endl;
   std::cout << "\n💡 Run with valgrind --tool=massif to see memory usage!"

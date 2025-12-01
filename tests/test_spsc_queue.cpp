@@ -6,6 +6,7 @@
 #include <numeric>
 #include <algorithm>
 
+#include "common.hpp"
 #include "spsc_queue.hpp"
 
 using namespace std::chrono;
@@ -223,7 +224,7 @@ TEST_F(SPSCQueueConcurrentTest, LatencyMeasurement) {
   EXPECT_LT(p50, 1000000) << "p50 latency too high: " << p50 << " ns";
   EXPECT_LT(p99, 10000000) << "p99 latency too high: " << p99 << " ns";
 
-  std::cout << "  Latency p50: " << p50 << " ns, p99: " << p99 << " ns" << std::endl;
+  std::cout << "  Latency p50: " << format_duration_ns(p50) << ", p99: " << format_duration_ns(p99) << std::endl;
 }
 
 TEST_F(SPSCQueueConcurrentTest, Throughput) {

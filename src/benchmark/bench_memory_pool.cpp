@@ -40,8 +40,8 @@ struct BenchResult {
   void print() const {
     std::cout << "\n" << name << ":" << std::endl;
     std::cout << "  Iterations:    " << iterations << std::endl;
-    std::cout << "  Total time:    " << elapsed_ns / 1e6 << " ms" << std::endl;
-    std::cout << "  Time per op:   " << ns_per_op << " ns" << std::endl;
+    std::cout << "  Total time:    " << format_duration_ns(static_cast<uint64_t>(elapsed_ns)) << std::endl;
+    std::cout << "  Time per op:   " << format_duration_ns(static_cast<uint64_t>(ns_per_op)) << std::endl;
     std::cout << "  Throughput:    " << ops_per_sec / 1e6 << " M ops/sec" << std::endl;
   }
 };
