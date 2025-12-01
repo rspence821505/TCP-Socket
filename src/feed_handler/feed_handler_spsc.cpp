@@ -236,35 +236,17 @@ public:
 };
 
 int connect_to_exchange(const std::string &host, int port) {
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    LOG_PERROR("Connect", "socket creation failed");
-    return -1;
-  }
+  SocketOptions opts;
+  opts.non_blocking = true;
 
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(port);
-  server_addr.sin_addr.s_addr = inet_addr(host.c_str());
-
-  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-      0) {
-    LOG_PERROR("Connect", "connection failed");
-    close(sockfd);
-    return -1;
-  }
-
-  // Set non-blocking mode
-  int flags = fcntl(sockfd, F_GETFL, 0);
-  if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    LOG_PERROR("Connect", "fcntl failed");
-    close(sockfd);
+  auto result = socket_connect(host, port, opts);
+  if (!result) {
+    LOG_ERROR("Connect", "%s", result.error().c_str());
     return -1;
   }
 
   LOG_INFO("Connect", "Connected to %s:%d", host.c_str(), port);
-  return sockfd;
+  return result.value();
 }
 
 int main(int argc, char *argv[]) {

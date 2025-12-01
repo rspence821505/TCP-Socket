@@ -165,40 +165,20 @@ private:
 };
 
 int connect_to_server(const char* host, int port) {
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    LOG_PERROR("Connect", "socket");
-    return -1;
-  }
-
-  // Enable TCP_NODELAY
-  int flag = 1;
-  setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
-
-  // Set receive buffer size
-  int rcvbuf = 256 * 1024;
-  setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
-
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(port);
-
-  if (inet_pton(AF_INET, host, &server_addr.sin_addr) <= 0) {
-    // Try localhost if invalid address
-    server_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  }
+  SocketOptions opts;
+  opts.tcp_nodelay = true;
+  opts.recv_buffer_size = 256 * 1024;
 
   LOG_INFO("Connect", "Connecting to %s:%d...", host, port);
 
-  if (connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-    LOG_PERROR("Connect", "connect");
-    close(sockfd);
+  auto result = socket_connect(host, port, opts);
+  if (!result) {
+    LOG_ERROR("Connect", "%s", result.error().c_str());
     return -1;
   }
 
   LOG_INFO("Connect", "Connected!");
-  return sockfd;
+  return result.value();
 }
 
 int main(int argc, char* argv[]) {

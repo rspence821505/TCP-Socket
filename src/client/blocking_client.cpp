@@ -43,43 +43,17 @@ void process_message(const std::string &message, Connection &conn) {
 }
 
 int connect_to_exchange(int port) {
-  // Create socket
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    LOG_PERROR("Client", "socket creation failed");
-    return -1;
-  }
+  SocketOptions opts;
+  opts.non_blocking = true;
 
-  // Set up server address
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(port);
-  server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-  // Connect to server
-  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-      0) {
-    LOG_PERROR("Client", "connection failed");
-    close(sockfd);
-    return -1;
-  }
-
-  // Set non-blocking mode
-  int flags = fcntl(sockfd, F_GETFL, 0);
-  if (flags == -1) {
-    LOG_PERROR("Client", "fcntl F_GETFL failed");
-    close(sockfd);
-    return -1;
-  }
-  if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    LOG_PERROR("Client", "fcntl F_SETFL failed");
-    close(sockfd);
+  auto result = socket_connect("127.0.0.1", port, opts);
+  if (!result) {
+    LOG_ERROR("Client", "%s", result.error().c_str());
     return -1;
   }
 
   std::cout << "Connected to exchange on port " << port << std::endl;
-  return sockfd;
+  return result.value();
 }
 
 bool drain_socket(Connection &conn) { // Changed from void to bool

@@ -89,31 +89,27 @@ ProtocolLatencyStats run_tcp_benchmark(const std::string &host, int port,
 
   ProtocolLatencyStats stats;
 
-  // Connect
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    LOG_PERROR("TCP", "socket creation failed");
+  // Map SocketConfig to SocketOptions
+  SocketOptions opts;
+  opts.tcp_nodelay = config.tcp_nodelay;
+  opts.recv_buffer_size = config.rcvbuf_size;
+  opts.send_buffer_size = config.sndbuf_size;
+  opts.non_blocking = true;
+
+  auto result = socket_connect(host, port, opts);
+  if (!result) {
+    LOG_ERROR("TCP", "%s", result.error().c_str());
     return stats;
   }
+  int sockfd = result.value();
 
-  apply_socket_config(sockfd, config, false);
-
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(port);
-  server_addr.sin_addr.s_addr = inet_addr(host.c_str());
-
-  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-      0) {
-    LOG_PERROR("TCP", "connection failed");
-    close(sockfd);
-    return stats;
+  // Apply TCP_QUICKACK if configured (Linux-only, handled separately)
+#ifdef __linux__
+  if (config.tcp_quickack) {
+    int flag = 1;
+    setsockopt(sockfd, IPPROTO_TCP, TCP_QUICKACK, &flag, sizeof(flag));
   }
-
-  // Set non-blocking
-  int flags = fcntl(sockfd, F_GETFL, 0);
-  fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+#endif
 
   std::cout << "Connected to TCP server" << std::endl;
 
@@ -221,28 +217,16 @@ ProtocolLatencyStats run_udp_benchmark(const std::string &host, int udp_port,
   fcntl(udp_fd, F_SETFL, flags | O_NONBLOCK);
 
   // Connect to TCP control channel
-  int tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (tcp_fd < 0) {
-    LOG_PERROR("UDP", "TCP control socket creation failed");
+  SocketOptions tcp_opts;
+  tcp_opts.non_blocking = true;
+
+  auto tcp_result = socket_connect(host, tcp_port, tcp_opts);
+  if (!tcp_result) {
+    LOG_ERROR("UDP", "TCP control connection failed: %s", tcp_result.error().c_str());
     close(udp_fd);
     return stats;
   }
-
-  struct sockaddr_in tcp_addr;
-  memset(&tcp_addr, 0, sizeof(tcp_addr));
-  tcp_addr.sin_family = AF_INET;
-  tcp_addr.sin_addr.s_addr = inet_addr(host.c_str());
-  tcp_addr.sin_port = htons(tcp_port);
-
-  if (connect(tcp_fd, (struct sockaddr *)&tcp_addr, sizeof(tcp_addr)) < 0) {
-    LOG_PERROR("UDP", "TCP control connection failed");
-    close(udp_fd);
-    close(tcp_fd);
-    return stats;
-  }
-
-  flags = fcntl(tcp_fd, F_GETFL, 0);
-  fcntl(tcp_fd, F_SETFL, flags | O_NONBLOCK);
+  int tcp_fd = tcp_result.value();
 
   std::cout << "Listening on UDP port " << udp_port << std::endl;
   std::cout << "Control channel connected to TCP port " << tcp_port << std::endl;

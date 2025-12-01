@@ -21,44 +21,38 @@ using BenchmarkLatencyStats = LatencyStats;
 // Connect to server with specific socket configuration
 int connect_with_config(const std::string &host, int port,
                         const SocketConfig &config, bool verbose = true) {
-  // 1. Create socket
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    LOG_PERROR("Benchmark", "socket creation failed");
+  // Map SocketConfig to SocketOptions
+  SocketOptions opts;
+  opts.tcp_nodelay = config.tcp_nodelay;
+  opts.recv_buffer_size = config.rcvbuf_size;
+  opts.send_buffer_size = config.sndbuf_size;
+  opts.non_blocking = true;
+
+  auto result = socket_connect(host, port, opts);
+  if (!result) {
+    LOG_ERROR("Benchmark", "%s", result.error().c_str());
     return -1;
   }
+  int sockfd = result.value();
 
-  // 2. Apply socket configuration BEFORE connect
-  // This is important for buffer sizes - set before connection established
-  if (!apply_socket_config(sockfd, config, verbose)) {
-    close(sockfd);
-    return -1;
+  // Apply TCP_QUICKACK if configured (Linux-only, handled separately)
+#ifdef __linux__
+  if (config.tcp_quickack) {
+    int flag = 1;
+    setsockopt(sockfd, IPPROTO_TCP, TCP_QUICKACK, &flag, sizeof(flag));
   }
-
-  // 3. Set up server address
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(port);
-  server_addr.sin_addr.s_addr = inet_addr(host.c_str());
-
-  // 4. Connect to server
-  if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
-      0) {
-    LOG_PERROR("Benchmark", "connection failed");
-    close(sockfd);
-    return -1;
-  }
-
-  // 5. Set non-blocking mode
-  int flags = fcntl(sockfd, F_GETFL, 0);
-  if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    LOG_PERROR("Benchmark", "fcntl failed");
-    close(sockfd);
-    return -1;
-  }
+#endif
 
   if (verbose) {
+    if (opts.tcp_nodelay) {
+      std::cout << "  ✓ TCP_NODELAY enabled" << std::endl;
+    }
+    if (opts.recv_buffer_size > 0) {
+      std::cout << "  ✓ SO_RCVBUF set" << std::endl;
+    }
+    if (opts.send_buffer_size > 0) {
+      std::cout << "  ✓ SO_SNDBUF set" << std::endl;
+    }
     std::cout << "  ✓ Connected to " << host << ":" << port << std::endl;
   }
 

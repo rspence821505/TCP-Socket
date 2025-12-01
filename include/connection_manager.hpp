@@ -10,6 +10,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "common.hpp"
+
 class ConnectionManagerV2 {
 public:
   // State machine for snapshot recovery
@@ -180,36 +182,16 @@ public:
   
 private:
   int create_and_connect() {
-    // Create socket
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-      perror("socket creation failed");
+    SocketOptions opts;
+    opts.non_blocking = true;
+
+    auto result = socket_connect(host_, port_, opts);
+    if (!result) {
+      std::cerr << "connection failed: " << result.error() << std::endl;
       return -1;
     }
-    
-    // Set up server address
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port_);
-    server_addr.sin_addr.s_addr = inet_addr(host_.c_str());
-    
-    // Connect to server
-    if (::connect(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-      perror("connection failed");
-      close(sockfd);
-      return -1;
-    }
-    
-    // Set non-blocking mode
-    int flags = fcntl(sockfd, F_GETFL, 0);
-    if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
-      perror("fcntl failed");
-      close(sockfd);
-      return -1;
-    }
-    
-    return sockfd;
+
+    return result.value();
   }
   
   std::string host_;

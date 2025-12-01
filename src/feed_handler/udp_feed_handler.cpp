@@ -107,29 +107,16 @@ public:
     fcntl(udp_fd_, F_SETFL, flags | O_NONBLOCK);
 
     // Connect to TCP control channel
-    tcp_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-    if (tcp_fd_ < 0) {
-      LOG_PERROR("UDPFeed", "TCP socket creation failed");
+    SocketOptions tcp_opts;
+    tcp_opts.non_blocking = true;
+
+    auto tcp_result = socket_connect(host_, tcp_port_, tcp_opts);
+    if (!tcp_result) {
+      LOG_ERROR("UDPFeed", "TCP connection failed: %s", tcp_result.error().c_str());
       close(udp_fd_);
       return false;
     }
-
-    struct sockaddr_in tcp_addr;
-    memset(&tcp_addr, 0, sizeof(tcp_addr));
-    tcp_addr.sin_family = AF_INET;
-    tcp_addr.sin_addr.s_addr = inet_addr(host_.c_str());
-    tcp_addr.sin_port = htons(tcp_port_);
-
-    if (connect(tcp_fd_, (struct sockaddr*)&tcp_addr, sizeof(tcp_addr)) < 0) {
-      LOG_PERROR("UDPFeed", "TCP connection failed");
-      close(udp_fd_);
-      close(tcp_fd_);
-      return false;
-    }
-
-    // Set TCP socket to non-blocking
-    flags = fcntl(tcp_fd_, F_GETFL, 0);
-    fcntl(tcp_fd_, F_SETFL, flags | O_NONBLOCK);
+    tcp_fd_ = tcp_result.value();
 
     LOG_INFO("UDPFeed", "UDP Feed Handler started");
     LOG_INFO("UDPFeed", "  UDP feed: %s:%d", host_.c_str(), udp_port_);
