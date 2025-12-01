@@ -421,7 +421,19 @@ inline Result<int> socket_connect(const std::string &host, int port,
   }
 
   // Connect with optional timeout
-  if (opts.connect_timeout_ms > 0) {
+  // Default timeout of 5 seconds for non-blocking sockets to avoid indefinite hangs
+  int effective_timeout_ms = opts.connect_timeout_ms;
+  if (effective_timeout_ms == 0 && opts.non_blocking) {
+    effective_timeout_ms = 5000;  // 5 second default for non-blocking
+  }
+
+  if (effective_timeout_ms > 0) {
+    // Set socket-level send timeout which affects connect() on most platforms
+    struct timeval tv;
+    tv.tv_sec = effective_timeout_ms / 1000;
+    tv.tv_usec = (effective_timeout_ms % 1000) * 1000;
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
     // Set non-blocking for connect with timeout
     int flags = fcntl(sockfd, F_GETFL, 0);
     if (flags == -1 || fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
@@ -435,16 +447,18 @@ inline Result<int> socket_connect(const std::string &host, int port,
 
     if (connect_result < 0 && errno == EINPROGRESS) {
       // Wait for connection with timeout using select
-      fd_set write_fds;
+      fd_set write_fds, error_fds;
       FD_ZERO(&write_fds);
+      FD_ZERO(&error_fds);
       FD_SET(sockfd, &write_fds);
+      FD_SET(sockfd, &error_fds);
 
-      struct timeval tv;
-      tv.tv_sec = opts.connect_timeout_ms / 1000;
-      tv.tv_usec = (opts.connect_timeout_ms % 1000) * 1000;
+      struct timeval select_tv;
+      select_tv.tv_sec = effective_timeout_ms / 1000;
+      select_tv.tv_usec = (effective_timeout_ms % 1000) * 1000;
 
       int select_result =
-          select(sockfd + 1, nullptr, &write_fds, nullptr, &tv);
+          select(sockfd + 1, nullptr, &write_fds, &error_fds, &select_tv);
 
       if (select_result <= 0) {
         close(sockfd);
