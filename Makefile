@@ -112,8 +112,8 @@ feed_handler_text: $(BUILD_DIR) $(SRC_DIR)/feed_handler_text.cpp $(INCLUDE_DIR)/
 	@echo "Building text feed handler..."
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_handler_text.cpp -o $(BUILD_DIR)/feed_handler_text
 
-# Unified feed handler with CLI interface
-feed_handler: $(BUILD_DIR) $(SRC_DIR)/feed_main.cpp $(INCLUDE_DIR)/cli_parser.hpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp $(INCLUDE_DIR)/order_book.hpp
+# Unified feed handler with CLI interface (uses consolidated net/feed.hpp)
+feed_handler: $(BUILD_DIR) $(SRC_DIR)/feed_main.cpp $(INCLUDE_DIR)/cli_parser.hpp $(INCLUDE_DIR)/net/feed.hpp $(INCLUDE_DIR)/text_protocol.hpp $(INCLUDE_DIR)/binary_protocol.hpp $(INCLUDE_DIR)/spsc_queue.hpp $(INCLUDE_DIR)/order_book.hpp
 	@echo "Building unified feed handler..."
 	$(CXX) $(CXXFLAGS) -O3 -pthread $(INCLUDES) $(SRC_DIR)/feed_main.cpp -o $(BUILD_DIR)/feed_handler
 

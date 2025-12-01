@@ -31,8 +31,8 @@
 
 ### Required Deliverables
 
-- [ ] `net/feed.hpp` (not created - functionality spread across other files)
-- [ ] `feed_main.cpp` (not created - have separate feed handlers)
+- [x] `net/feed.hpp` → Implemented as `include/net/feed.hpp`
+- [x] `feed_main.cpp` → Implemented as `src/feed_main.cpp` with unified CLI
 - [x] `scripts/replay_server.cpp` → Implemented as mock servers
 
 ### Stretch Goals
@@ -87,6 +87,23 @@
 - [x] Zero-copy parsing with `std::string_view`
 - [x] TextLineBuffer for handling partial lines
 - [x] TextTick struct with timestamp, symbol, price, volume
+
+### Consolidated Feed Module (`include/net/feed.hpp`)
+
+- [x] `net::FeedHandler` - High-level feed handler with thread management
+- [x] `net::BookUpdatingFeedHandler` - Handler with order book integration
+- [x] `net::Connection` - TCP connection management
+- [x] `net::TextProtocolReader` / `net::BinaryProtocolReader` - Protocol readers
+- [x] `net::TickProcessor` - Queue consumer with callback support
+- [x] `net::LatencyStats` - Statistics collection
+- [x] `net::Tick` - Unified tick structure
+
+### CLI Interface (`include/cli_parser.hpp`)
+
+- [x] `--host`, `--port` options for connection
+- [x] `--threads=R,P,B` for thread configuration
+- [x] `--protocol text|binary` for protocol selection
+- [x] `--queue-size`, `--verbose` options
 
 ### Feed Handlers (src/)
 
@@ -159,31 +176,72 @@
 - p99 latency: 100µs
 - Parse errors: 0
 
-#### 2. Unified CLI Interface
+#### ~~2. Unified CLI Interface~~ ✅ COMPLETED
 
-Current binaries have inconsistent CLI arguments. Need unified interface:
+~~Current binaries have inconsistent CLI arguments. Need unified interface:~~
 
 ```bash
 ./feed_handler --host localhost --port 9999 --threads=1,2,1
 ```
 
-**Files to create:**
+**Implemented:**
 
-- [ ] `src/feed_main.cpp` - Unified entry point
-- [ ] `include/cli_parser.hpp` - Argument parsing
-- [ ] Support `--threads=reader,parser,book-updater` format
+- [x] `src/feed_main.cpp` - Unified entry point with text/binary protocol support
+- [x] `include/cli_parser.hpp` - Argument parsing with full CLI options
+- [x] Support `--threads=reader,parser,book-updater` format
+- [x] Support `--protocol text|binary` for protocol selection
+- [x] Support `--verbose` for detailed output
+- [x] Support `--queue-size` for queue capacity configuration
 
-#### 3. Consolidated Feed Module
+**Usage:**
+```bash
+./build/feed_handler --port 9999
+./build/feed_handler --host localhost --port 9999 --threads=1,2,1
+./build/feed_handler --port 9999 --protocol binary --verbose
+```
 
-Spec asks for `net/feed.hpp` but functionality is spread across files.
+#### ~~3. Consolidated Feed Module~~ ✅ COMPLETED
 
-**Refactoring needed:**
+~~Spec asks for `net/feed.hpp` but functionality is spread across files.~~
 
-- [ ] Create `include/net/feed.hpp` consolidating:
-  - Connection management
-  - Protocol parsing
-  - Queue integration
-  - Thread management
+**Implemented:**
+
+- [x] Created `include/net/feed.hpp` consolidating:
+  - `net::Connection` - Connection management with socket setup
+  - `net::TextProtocolReader` / `net::BinaryProtocolReader` - Protocol parsing
+  - `net::TickProcessor` - Queue consumer with callback support
+  - `net::FeedHandler` - High-level handler with thread management
+  - `net::BookUpdatingFeedHandler` - Handler with order book integration
+  - `net::LatencyStats` - Statistics collection
+  - `net::Tick` - Unified tick structure for both protocols
+
+**Architecture:**
+
+```
+net::FeedHandler
+├── Connection (socket management)
+├── TextProtocolReader / BinaryProtocolReader (protocol parsing)
+├── SPSCQueue<Tick> (lock-free queue)
+└── TickProcessor (callback-based processing)
+```
+
+**Usage:**
+
+```cpp
+#include "net/feed.hpp"
+
+net::FeedConfig config;
+config.host = "localhost";
+config.port = 9999;
+config.protocol = net::Protocol::TEXT;
+
+net::BookUpdatingFeedHandler handler(config);
+handler.start();
+handler.wait();
+handler.print_stats();
+```
+
+**Note:** Foundational headers (`text_protocol.hpp`, `binary_protocol.hpp`, `spsc_queue.hpp`, `order_book.hpp`, `connection_manager.hpp`) are retained for backward compatibility with specialized feed handlers (heartbeat, snapshot, etc.).
 
 #### 4. Performance Verification
 
@@ -312,11 +370,11 @@ make test-text-protocol     # Text protocol test
 
 | Category          | Done   | Total  | Percentage |
 | ----------------- | ------ | ------ | ---------- |
-| Core Requirements | 4      | 5      | 80%        |
+| Core Requirements | 5      | 5      | 100%       |
 | DS & Design       | 1      | 1      | 100%       |
-| Deliverables      | 1      | 3      | 33%        |
+| Deliverables      | 3      | 3      | 100%       |
 | Stretch Goals     | 3      | 3      | 100%       |
 | Tests             | 2      | 3      | 67%        |
-| **Overall**       | **11** | **15** | **73%**    |
+| **Overall**       | **14** | **15** | **93%**    |
 
-**Status: In Progress** - Core networking, data structures, and text protocol complete. Missing unified CLI and consolidated feed module.
+**Status: Near Complete** - All core requirements, deliverables, and stretch goals complete. Only missing malformed input handling tests.
